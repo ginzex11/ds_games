@@ -3,8 +3,10 @@
 #include <time.h>
 #include <math.h>
 #include "glut.h"
-
+#include "Node.h"
+#include "Edge.h"
 #include "Cell.h"
+#include "CompareNodes.h"
 #include <iostream>
 
 #include <queue>
@@ -44,6 +46,10 @@ queue<Cell *> grays;
 vector<Cell *> dfsGrays;
 queue<Cell *> forwardQueue;   // BFS from START
 queue<Cell *> backwardQueue;  // BFS from TARGET
+
+priority_queue <Node*, vector<Node*>, CompareNodes> pq;
+
+Node* pn = new Node();
 
 // Store cells by position for bidirectional search
 Cell* forwardCells[MSZ][MSZ];   // Forward search cells by position
@@ -104,6 +110,9 @@ void init()
 	glOrtho(0, MSZ, 0, MSZ, -1, 1); // set the coordinates system
 
 	InitMaze();
+
+	// pq.push(pn); //for test
+	//cout << endl;
 }
 
 void ShowMaze()
