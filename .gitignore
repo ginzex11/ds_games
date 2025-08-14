@@ -1,0 +1,43 @@
+# Build outputs
+*.exe
+*.obj
+*.pdb
+*.ilk
+*.log
+*.tlog
+
+# Debug directories
+Debug/
+Release/
+x64/
+
+# Visual Studio files
+*.vcxproj.user
+*.sln.docstates
+*.suo
+*.sdf
+*.opensdf
+*.db
+
+# VS Code settings (optional - you may want to keep these)
+.vscode/settings.json
+
+# Windows specific
+Thumbs.db
+Desktop.ini
+
+# Object files and libraries
+*.o
+*.a
+*.lib
+
+# DLL files
+*.dll
+
+# Temporary files
+*.tmp
+*~
+
+# IDE files
+*.swp
+*.swo

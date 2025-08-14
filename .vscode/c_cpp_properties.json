@@ -1,0 +1,27 @@
+{
+  "configurations": [
+    {
+      "name": "windows-gcc-x86",
+      "includePath": [
+        "${workspaceFolder}/**",
+        "${workspaceFolder}/Graphics/Graphics"
+      ],
+      "defines": [
+        "_DEBUG",
+        "UNICODE",
+        "_UNICODE"
+      ],
+      "compilerPath": "C:/MinGW/bin/g++.exe",
+      "cStandard": "c17",
+      "cppStandard": "c++14",
+      "intelliSenseMode": "windows-gcc-x86",
+      "compilerArgs": [
+        "-lfreeglut",
+        "-lglew32",
+        "-lopengl32",
+        "-lglu32"
+      ]
+    }
+  ],
+  "version": 4
+}
