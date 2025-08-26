@@ -57,49 +57,140 @@ Cell* backwardCells[MSZ][MSZ];  // Backward search cells by position
 
 int maze[MSZ][MSZ] = {0};
 
-void InitMaze()
+// Function to check if there's a path between START and TARGET using flood fill
+bool IsPathPossible()
 {
-	int i, j;
-
-	// set frame
-	for (i = 0; i < MSZ; i++)
+	// Create a temporary maze copy for flood fill
+	bool visited[MSZ][MSZ];
+	for (int i = 0; i < MSZ; i++)
 	{
-		maze[0][i] = WALL;
-		maze[i][0] = WALL;
-		maze[MSZ - 1][i] = WALL;
-		maze[i][MSZ - 1] = WALL;
-	}
-
-	// setup walls
-	for (i = 1; i < MSZ - 1; i++)
-		for (j = 1; j < MSZ - 1; j++)
+		for (int j = 0; j < MSZ; j++)
 		{
-			if (i % 2 == 0) // mostly WALLS
+			visited[i][j] = false;
+		}
+	}
+	
+	// Find START position
+	int startRow = MSZ / 2, startCol = MSZ / 2;
+	
+	// Find TARGET position
+	int targetRow = -1, targetCol = -1;
+	for (int i = 0; i < MSZ && targetRow == -1; i++)
+	{
+		for (int j = 0; j < MSZ && targetCol == -1; j++)
+		{
+			if (maze[i][j] == TARGET)
 			{
-				if (rand() % 100 < 75)
-					maze[i][j] = WALL;
-				else
-					maze[i][j] = SPACE;
-			}
-			else // mostly SPACES
-			{
-				if (rand() % 100 < 85)
-					maze[i][j] = SPACE;
-				else
-					maze[i][j] = WALL;
+				targetRow = i;
+				targetCol = j;
 			}
 		}
+	}
+	
+	if (targetRow == -1) return false; // TARGET not found
+	
+	// Simple BFS to check connectivity
+	queue<pair<int, int>> q;
+	q.push(make_pair(startRow, startCol));
+	visited[startRow][startCol] = true;
+	
+	while (!q.empty())
+	{
+		pair<int, int> current = q.front();
+		q.pop();
+		int row = current.first;
+		int col = current.second;
+		
+		// Check if we reached the target
+		if (row == targetRow && col == targetCol)
+		{
+			return true;
+		}
+		
+		// Check all 4 directions
+		int directions[4][2] = {{-1,0}, {1,0}, {0,-1}, {0,1}};
+		for (int d = 0; d < 4; d++)
+		{
+			int newRow = row + directions[d][0];
+			int newCol = col + directions[d][1];
+			
+			if (newRow >= 0 && newRow < MSZ && newCol >= 0 && newCol < MSZ &&
+				!visited[newRow][newCol] && 
+				(maze[newRow][newCol] == SPACE || maze[newRow][newCol] == TARGET))
+			{
+				visited[newRow][newCol] = true;
+				q.push(make_pair(newRow, newCol));
+			}
+		}
+	}
+	
+	return false; // No path found
+}
 
-	maze[MSZ / 2][MSZ / 2] = START;
+void InitMaze()
+{
+	int attempts = 0;
+	const int maxAttempts = 10;
 	
-	// Ensure TARGET is placed on a SPACE, not a WALL
-	int targetRow, targetCol;
 	do {
-		targetRow = rand() % MSZ;
-		targetCol = rand() % MSZ;
-	} while (maze[targetRow][targetCol] != SPACE);
+		int i, j;
+
+		// set frame
+		for (i = 0; i < MSZ; i++)
+		{
+			maze[0][i] = WALL;
+			maze[i][0] = WALL;
+			maze[MSZ - 1][i] = WALL;
+			maze[i][MSZ - 1] = WALL;
+		}
+
+		// setup walls
+		for (i = 1; i < MSZ - 1; i++)
+			for (j = 1; j < MSZ - 1; j++)
+			{
+				if (i % 2 == 0) // mostly WALLS
+				{
+					if (rand() % 100 < 75)
+						maze[i][j] = WALL;
+					else
+						maze[i][j] = SPACE;
+				}
+				else // mostly SPACES
+				{
+					if (rand() % 100 < 85)
+						maze[i][j] = SPACE;
+					else
+						maze[i][j] = WALL;
+				}
+			}
+
+		maze[MSZ / 2][MSZ / 2] = START;
+		
+		// Ensure TARGET is placed on a SPACE, not a WALL
+		int targetRow, targetCol;
+		do {
+			targetRow = rand() % MSZ;
+			targetCol = rand() % MSZ;
+		} while (maze[targetRow][targetCol] != SPACE);
+		
+		maze[targetRow][targetCol] = TARGET;
+		
+		attempts++;
+		
+		// If path is possible or we've tried too many times, break
+		if (IsPathPossible() || attempts >= maxAttempts)
+		{
+			break;
+		}
+		
+		cout << "No path found, regenerating maze... (attempt " << attempts << ")" << endl;
+		
+	} while (attempts < maxAttempts);
 	
-	maze[targetRow][targetCol] = TARGET;
+	if (attempts >= maxAttempts)
+	{
+		cout << "Warning: Generated maze after " << maxAttempts << " attempts, path may not exist." << endl;
+	}
 }
 
 void init()
@@ -175,7 +266,13 @@ void RestorePath(Cell *pc)
 {
 	while (pc != nullptr)
 	{
-		maze[pc->getRow()][pc->getCol()] = PATH;
+		int row = pc->getRow();
+		int col = pc->getCol();
+		// Don't overwrite START and TARGET positions
+		if (maze[row][col] != START && maze[row][col] != TARGET)
+		{
+			maze[row][col] = PATH;
+		}
 		pc = pc->getParent();
 	}
 }
@@ -186,7 +283,13 @@ void RestoreBidirectionalPath(Cell *forwardCell, Cell *backwardCell)
 	Cell *current = forwardCell;
 	while (current != nullptr)
 	{
-		maze[current->getRow()][current->getCol()] = PATH;
+		int row = current->getRow();
+		int col = current->getCol();
+		// Don't overwrite START and TARGET positions
+		if (maze[row][col] != START && maze[row][col] != TARGET)
+		{
+			maze[row][col] = PATH;
+		}
 		current = current->getParent();
 	}
 	
@@ -194,7 +297,13 @@ void RestoreBidirectionalPath(Cell *forwardCell, Cell *backwardCell)
 	current = backwardCell;
 	while (current != nullptr)
 	{
-		maze[current->getRow()][current->getCol()] = PATH;
+		int row = current->getRow();
+		int col = current->getCol();
+		// Don't overwrite START and TARGET positions
+		if (maze[row][col] != START && maze[row][col] != TARGET)
+		{
+			maze[row][col] = PATH;
+		}
 		current = current->getParent();
 	}
 }
