@@ -41,6 +41,7 @@ const int RIGHT = 0;
 bool startBFS = false;
 bool startDFS = false;
 bool startBidirectionalBFS = false;
+bool startPacMan = false;
 
 queue<Cell *> grays;
 vector<Cell *> dfsGrays;
@@ -56,6 +57,26 @@ Cell* forwardCells[MSZ][MSZ];   // Forward search cells by position
 Cell* backwardCells[MSZ][MSZ];  // Backward search cells by position
 
 int maze[MSZ][MSZ] = {0};
+
+// Pac-Man game entities
+struct Pos {
+    int row, col;
+    Pos(int r = 0, int c = 0) : row(r), col(c) {}
+};
+
+bool dots[MSZ][MSZ] = {false}; // Coins/dots
+Pos pacmanPos(MSZ/2, MSZ/2);
+vector<Pos> ghostPos;
+int score = 0;
+bool gameOver = false;
+bool pacmanWon = false;
+
+// Constants for Pac-Man
+const int PACMAN = 12;
+const int GHOST1 = 13;
+const int GHOST2 = 14;
+const int GHOST3 = 15;
+const int DOT = 16;
 
 // Function to check if there's a path between START and TARGET using flood fill
 bool IsPathPossible()
@@ -251,6 +272,18 @@ void ShowMaze()
 			case MEETING_POINT:
 				glColor3d(1, 1, 0); // yellow (meeting point)
 				break;
+			case PACMAN:
+				glColor3d(1, 1, 0); // yellow
+				break;
+			case GHOST1:
+				glColor3d(1, 0, 0); // red
+				break;
+			case GHOST2:
+				glColor3d(0, 1, 0); // green
+				break;
+			case GHOST3:
+				glColor3d(0, 0, 1); // blue
+				break;
 			}
 			// draw square
 			glBegin(GL_POLYGON);
@@ -259,6 +292,17 @@ void ShowMaze()
 			glVertex2d(j + 1, i + 1);
 			glVertex2d(j + 1, i);
 			glEnd();
+
+			// Draw dot if SPACE and has dot
+			if (maze[i][j] == SPACE && dots[i][j]) {
+				glColor3d(1, 1, 0); // yellow
+				glBegin(GL_POLYGON);
+				for (int k = 0; k < 20; k++) {
+					float angle = 2 * 3.14159 * k / 20;
+					glVertex2d(j + 0.5 + 0.2 * cos(angle), i + 0.5 + 0.2 * sin(angle));
+				}
+				glEnd();
+			}
 		}
 }
 
@@ -620,6 +664,196 @@ void BidirectionalBFSIteration()
 	}
 }
 
+Pos getNextMoveAStar(Pos start, Pos target) {
+    // A* to find path from start to target
+    priority_queue<Node*, vector<Node*>, CompareNodes> pq;
+    bool visited[MSZ][MSZ] = {false};
+    Node* nodes[MSZ][MSZ] = {nullptr};
+
+    Node* startNode = new Node(start.row, start.col, 0, abs(start.row - target.row) + abs(start.col - target.col), nullptr);
+    pq.push(startNode);
+    nodes[start.row][start.col] = startNode;
+
+    int dr[] = {-1, 1, 0, 0};
+    int dc[] = {0, 0, -1, 1};
+
+    while (!pq.empty()) {
+        Node* current = pq.top();
+        pq.pop();
+
+        int r = current->getRow();
+        int c = current->getCol();
+
+        if (visited[r][c]) continue;
+        visited[r][c] = true;
+
+        if (r == target.row && c == target.col) {
+            // Found target, reconstruct path to get next move
+            vector<Pos> path;
+            Node* node = current;
+            while (node) {
+                path.push_back(Pos(node->getRow(), node->getCol()));
+                node = node->getParent();
+            }
+            reverse(path.begin(), path.end());
+            if (path.size() >= 2) {
+                Pos next = path[1];
+                // Clean up memory
+                for (int i = 0; i < MSZ; i++) {
+                    for (int j = 0; j < MSZ; j++) {
+                        delete nodes[i][j];
+                    }
+                }
+                return next;
+            }
+        }
+
+        for (int d = 0; d < 4; d++) {
+            int nr = r + dr[d];
+            int nc = c + dc[d];
+            if (nr >= 0 && nr < MSZ && nc >= 0 && nc < MSZ && maze[nr][nc] != WALL && !visited[nr][nc]) {
+                int g = current->getG() + 1;
+                int h = abs(nr - target.row) + abs(nc - target.col);
+                Node* neighbor = new Node(nr, nc, g, h, current);
+                if (!nodes[nr][nc] || g + h < nodes[nr][nc]->getF()) {
+                    nodes[nr][nc] = neighbor;
+                    pq.push(neighbor);
+                } else {
+                    delete neighbor;
+                }
+            }
+        }
+    }
+
+    // No path found, return current position
+    for (int i = 0; i < MSZ; i++) {
+        for (int j = 0; j < MSZ; j++) {
+            delete nodes[i][j];
+        }
+    }
+    return start;
+}
+
+Pos getNextMoveLimitedBFS(Pos start, int maxDepth) {
+    // Limited BFS to find nearest dot or avoid ghosts
+    queue<pair<Pos, int>> q; // position, depth
+    bool visited[MSZ][MSZ] = {false};
+    Pos parent[MSZ][MSZ];
+
+    q.push({start, 0});
+    visited[start.row][start.col] = true;
+    parent[start.row][start.col] = Pos(-1, -1);
+
+    Pos nearestDot(-1, -1);
+    int minDist = INT_MAX;
+
+    int dr[] = {-1, 1, 0, 0};
+    int dc[] = {0, 0, -1, 1};
+
+    while (!q.empty()) {
+        auto [current, depth] = q.front();
+        q.pop();
+
+        if (depth > maxDepth) continue;
+
+        // Check if there's a dot here
+        if (dots[current.row][current.col] && !(current.row == start.row && current.col == start.col)) {
+            if (depth < minDist) {
+                minDist = depth;
+                nearestDot = current;
+            }
+        }
+
+        for (int d = 0; d < 4; d++) {
+            int nr = current.row + dr[d];
+            int nc = current.col + dc[d];
+            if (nr >= 0 && nr < MSZ && nc >= 0 && nc < MSZ && maze[nr][nc] != WALL && !visited[nr][nc]) {
+                visited[nr][nc] = true;
+                parent[nr][nc] = current;
+                q.push({Pos(nr, nc), depth + 1});
+            }
+        }
+    }
+
+    if (nearestDot.row != -1) {
+        // Reconstruct path to nearest dot, take first step
+        vector<Pos> path;
+        Pos p = nearestDot;
+        while (p.row != -1) {
+            path.push_back(p);
+            p = parent[p.row][p.col];
+        }
+        reverse(path.begin(), path.end());
+        if (path.size() >= 2) {
+            return path[1];
+        }
+    }
+
+    // No dot found, stay or random move
+    return start;
+}
+
+void PacManIteration() {
+    if (gameOver || pacmanWon) {
+        startPacMan = false;
+        return;
+    }
+
+    // Move ghosts
+    for (size_t i = 0; i < ghostPos.size(); i++) {
+        Pos next = getNextMoveAStar(ghostPos[i], pacmanPos);
+        if (next.row != ghostPos[i].row || next.col != ghostPos[i].col) {
+            // Clear old position
+            if (maze[ghostPos[i].row][ghostPos[i].col] == GHOST1 + i) {
+                maze[ghostPos[i].row][ghostPos[i].col] = SPACE;
+            }
+            ghostPos[i] = next;
+            maze[next.row][next.col] = GHOST1 + i;
+        }
+    }
+
+    // Check collision
+    for (auto& g : ghostPos) {
+        if (g.row == pacmanPos.row && g.col == pacmanPos.col) {
+            gameOver = true;
+            cout << "Game Over! Ghost caught Pac-Man. Score: " << score << endl;
+            return;
+        }
+    }
+
+    // Move Pac-Man
+    Pos nextPac = getNextMoveLimitedBFS(pacmanPos, 10);
+    if (nextPac.row != pacmanPos.row || nextPac.col != pacmanPos.col) {
+        // Clear old position
+        if (maze[pacmanPos.row][pacmanPos.col] == PACMAN) {
+            maze[pacmanPos.row][pacmanPos.col] = SPACE;
+        }
+        pacmanPos = nextPac;
+        maze[nextPac.row][nextPac.col] = PACMAN;
+
+        // Eat dot
+        if (dots[nextPac.row][nextPac.col]) {
+            dots[nextPac.row][nextPac.col] = false;
+            score++;
+            cout << "Score: " << score << endl;
+        }
+    }
+
+    // Check win
+    bool allEaten = true;
+    for (int i = 0; i < MSZ && allEaten; i++) {
+        for (int j = 0; j < MSZ && allEaten; j++) {
+            if (maze[i][j] == SPACE && dots[i][j]) {
+                allEaten = false;
+            }
+        }
+    }
+    if (allEaten) {
+        pacmanWon = true;
+        cout << "Pac-Man wins! All dots eaten. Score: " << score << endl;
+    }
+}
+
 void display()
 {
 	glClear(GL_COLOR_BUFFER_BIT); // clean frame buffer
@@ -645,8 +879,52 @@ void idle()
 		DFSIteration();
 	if (startBidirectionalBFS)
 		BidirectionalBFSIteration();
+	if (startPacMan)
+		PacManIteration();
 
 	glutPostRedisplay();
+}
+
+void InitPacManGame() {
+    // Reset game state
+    gameOver = false;
+    pacmanWon = false;
+    score = 0;
+    ghostPos.clear();
+
+    // Generate maze if not already
+    InitMaze();
+
+    // Place Pac-Man at center
+    pacmanPos = Pos(MSZ/2, MSZ/2);
+    maze[MSZ/2][MSZ/2] = PACMAN;
+
+    // Place ghosts randomly on SPACE
+    for (int i = 0; i < 3; i++) {
+        int r, c;
+        do {
+            r = rand() % MSZ;
+            c = rand() % MSZ;
+        } while (maze[r][c] != SPACE || (r == MSZ/2 && c == MSZ/2));
+        ghostPos.push_back(Pos(r, c));
+        maze[r][c] = GHOST1 + i;
+    }
+
+    // Place dots on all SPACE except starts
+    for (int i = 0; i < MSZ; i++) {
+        for (int j = 0; j < MSZ; j++) {
+            if (maze[i][j] == SPACE) {
+                dots[i][j] = true;
+            } else {
+                dots[i][j] = false;
+            }
+        }
+    }
+    // Remove dots from Pac-Man and ghost positions
+    dots[pacmanPos.row][pacmanPos.col] = false;
+    for (auto& g : ghostPos) {
+        dots[g.row][g.col] = false;
+    }
 }
 
 void menu(int choice)
@@ -709,7 +987,16 @@ void menu(int choice)
 		break;
 		case 4: // UCS
 			glutDisplayFunc(displayGraph);
-		break; 
+		break;
+		case 5: // Pac-Man AI
+			glutDisplayFunc(display);
+			startPacMan = true;
+			startBFS = false;
+			startDFS = false;
+			startBidirectionalBFS = false;
+			// Initialize Pac-Man game
+			InitPacManGame();
+		break;
 	}
 }
 
@@ -731,6 +1018,7 @@ int main(int argc, char *argv[])
 	glutAddMenuEntry("DFS", 2);
 	glutAddMenuEntry("BFS bidirectional", 3);
 	glutAddMenuEntry("UCS", 4);
+	glutAddMenuEntry("Pac-Man AI", 5);
 	glutAttachMenu(GLUT_RIGHT_BUTTON);
 
 	init();
