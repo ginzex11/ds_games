@@ -6,10 +6,11 @@
 #include <vector>
 #include <iostream>
 #include <algorithm>
+#include <random>
 #include <windows.h>
 
-#include "freeglut_std.h"
-#include "glut.h"
+#include <GL/freeglut.h>
+#include <GL/glut.h>
 // #include "glew.h"  // Commented out to avoid compilation issues
 
 #include "Cell.h"
@@ -291,7 +292,17 @@ void moveGhosts() {
     for (int i = 0; i < 3; i++) {
         vector<Position> path = aStar(ghostPos[i], pacmanPos);
         if (path.size() > 1) {
-            ghostPos[i] = path[1]; // Move to next position
+            // Check if the next position is occupied by another ghost
+            bool occupied = false;
+            for (int j = 0; j < 3; j++) {
+                if (j != i && ghostPos[j] == path[1]) {
+                    occupied = true;
+                    break;
+                }
+            }
+            if (!occupied) {
+                ghostPos[i] = path[1]; // Move to next position
+            }
         }
     }
 }
@@ -335,7 +346,7 @@ void initMaze() {
     }
     
     // Shuffle and pick 3 positions for ghosts
-    random_shuffle(availableSpaces.begin(), availableSpaces.end());
+    std::shuffle(availableSpaces.begin(), availableSpaces.end(), std::mt19937{std::random_device{}()});
     for (int i = 0; i < 3 && i < availableSpaces.size(); i++) {
         ghostPos[i] = availableSpaces[i];
     }

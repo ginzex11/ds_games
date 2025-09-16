@@ -41,15 +41,8 @@ An AI vs AI implementation of Pac-Man where ghosts use A* pathfinding to chase P
 - Pac-Man evades ghosts using BFS within a limited search depth
 - Game ends when Pac-Man is caught or all coins are collected
 
-## Troubleshooting
-
-### Windows Gaming Overlay Issue
-If you see "we cant open this ms-gamingoverlay link" after the game ends:
-
-1. Go to **Settings** → **Gaming** → **Game Bar**
-2. Turn off:
-   - "Record game clips, screenshots, and broadcast using Game Bar"
-   - "Open Game Bar using this button on a controller"
-   - "Show Game Bar when I play full-screen games"
-
-Alternatively, you can disable the Game Bar entirely by turning off "Record game clips..."
+## Technical Details
+- Maze size: 20x20 grid
+- Algorithms: A* for ghosts, BFS (depth-limited) for Pac-Man
+- Graphics: OpenGL with GLUT for rendering
+- Frame rate: ~10 FPS for smooth animation
