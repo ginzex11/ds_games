@@ -22,7 +22,7 @@ using namespace std;
 const int WIDTH = 600;
 const int HEIGHT = 600;
 
-const int MSZ = 20; // Smaller maze for visibility
+const int MSZ = 35; // Smaller maze for visibility
 
 const int WALL = 1;
 const int SPACE = 0;
@@ -454,7 +454,7 @@ void display() {
         glColor3d(1, 1, 1);
         char scoreText[50];
         sprintf(scoreText, "Coins left: %d", (int)coins.size());
-        drawText(-0.9, 0.9, scoreText);
+        drawText(-0.95f, 0.95f, scoreText);  // Dynamic position: top-left corner, slightly inset
     } else if (currentState == GAME_OVER) {
         glColor3d(1, 0, 0);
         drawText(-0.2, 0.2, "GAME OVER");
