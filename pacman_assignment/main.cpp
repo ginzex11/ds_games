@@ -308,6 +308,8 @@ bool checkCollision() {
 
 // Initialize maze
 void initMaze() {
+    srand(time(NULL)); // Randomize for each game
+    
     // Create a simple maze with walls
     for (int i = 0; i < MSZ; i++) {
         for (int j = 0; j < MSZ; j++) {
@@ -322,12 +324,24 @@ void initMaze() {
     // Place Pac-Man
     pacmanPos = Position(MSZ/2, MSZ/2);
 
-    // Place ghosts
-    ghostPos[0] = Position(1, 1);
-    ghostPos[1] = Position(1, MSZ-2);
-    ghostPos[2] = Position(MSZ-2, 1);
+    // Place ghosts at random positions
+    vector<Position> availableSpaces;
+    for (int i = 1; i < MSZ-1; i++) {
+        for (int j = 1; j < MSZ-1; j++) {
+            if (maze[i][j] == SPACE && (i != MSZ/2 || j != MSZ/2)) { // Not Pac-Man's position
+                availableSpaces.push_back(Position(i, j));
+            }
+        }
+    }
+    
+    // Shuffle and pick 3 positions for ghosts
+    random_shuffle(availableSpaces.begin(), availableSpaces.end());
+    for (int i = 0; i < 3 && i < availableSpaces.size(); i++) {
+        ghostPos[i] = availableSpaces[i];
+    }
 
-    // Place coins
+    // Clear and place coins
+    coins.clear();
     for (int i = 1; i < MSZ-1; i++) {
         for (int j = 1; j < MSZ-1; j++) {
             if (maze[i][j] == SPACE) {
