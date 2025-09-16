@@ -39,6 +39,9 @@ struct Position {
     bool operator==(const Position& other) const {
         return row == other.row && col == other.col;
     }
+    bool operator!=(const Position& other) const {
+        return !(*this == other);
+    }
 };
 
 Position pacmanPos;
@@ -221,6 +224,32 @@ void movePacman() {
         if (it != coins.end()) {
             coins.erase(it);
         }
+    } else {
+        // If target direction blocked, find alternative safe move
+        Position bestMove = pacmanPos;
+        double maxDist = 0;
+        for (auto& dir : directions) {
+            int nnr = pacmanPos.row + dir[0];
+            int nnc = pacmanPos.col + dir[1];
+            if (nnr >= 0 && nnr < MSZ && nnc >= 0 && nnc < MSZ && maze[nnr][nnc] != WALL) {
+                double minGhostDist = 1e9;
+                for (auto& gp : ghostPos) {
+                    double dist = abs(gp.row - nnr) + abs(gp.col - nnc);
+                    if (dist < minGhostDist) minGhostDist = dist;
+                }
+                if (minGhostDist > maxDist) {
+                    maxDist = minGhostDist;
+                    bestMove = Position(nnr, nnc);
+                }
+            }
+        }
+        if (bestMove != pacmanPos) {
+            pacmanPos = bestMove;
+            auto it = find(coins.begin(), coins.end(), pacmanPos);
+            if (it != coins.end()) {
+                coins.erase(it);
+            }
+        }
     }
 }
 
@@ -272,6 +301,14 @@ void initMaze() {
                 coins.push_back(Position(i, j));
             }
         }
+    }
+}
+
+// Draw text on screen
+void drawText(float x, float y, const char* text) {
+    glRasterPos2f(x, y);
+    for (const char* c = text; *c != '\0'; c++) {
+        glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, *c);
     }
 }
 
@@ -341,6 +378,12 @@ void display() {
         glPopMatrix();
     }
 
+    // Draw score
+    glColor3d(1, 1, 1);
+    char scoreText[50];
+    sprintf(scoreText, "Coins left: %d", (int)coins.size());
+    drawText(-0.9, 0.9, scoreText);
+
     glutSwapBuffers();
 }
 
@@ -349,15 +392,15 @@ void idle() {
     movePacman();
     moveGhosts();
     if (checkCollision()) {
-        cout << "Game Over!" << endl;
+        cout << "Game Over! Final score: " << (MSZ*MSZ - coins.size()) << endl;
         exit(0);
     }
     if (coins.empty()) {
-        cout << "You Win!" << endl;
+        cout << "You Win! Final score: " << (MSZ*MSZ) << endl;
         exit(0);
     }
     glutPostRedisplay();
-    Sleep(500); // Delay for visibility
+    Sleep(100); // Faster frame rate
 }
 
 int main(int argc, char* argv[]) {
