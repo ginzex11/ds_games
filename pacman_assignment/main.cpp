@@ -31,6 +31,9 @@ const int GHOST2 = 4;
 const int GHOST3 = 5;
 const int COIN = 6;
 
+enum GameState { MENU, PLAYING, GAME_OVER, WIN };
+GameState currentState = MENU;
+
 int maze[MSZ][MSZ];
 
 struct Position {
@@ -47,11 +50,41 @@ struct Position {
 Position pacmanPos;
 Position ghostPos[3];
 vector<Position> coins;
+int initialCoins;
 
 int directions[4][2] = {{-1, 0}, {1, 0}, {0, -1}, {0, 1}}; // up, down, left, right
 
+// Forward declarations
+void movePacman();
+void moveGhosts();
+bool checkCollision();
+void initMaze();
+void resetGame();
+void drawText(float x, float y, const char* text);
+void display();
+void idle();
+void mouse(int button, int state, int x, int y);
+
 double heuristic(Position a, Position b) {
     return abs(a.row - b.row) + abs(a.col - b.col); // Manhattan
+}
+
+// Idle function for game loop
+void idle() {
+    if (currentState == PLAYING) {
+        movePacman();
+        moveGhosts();
+        if (checkCollision()) {
+            cout << "Game Over! Final score: " << (initialCoins - (int)coins.size()) << endl;
+            currentState = GAME_OVER;
+        }
+        if (coins.empty()) {
+            cout << "You Win! Final score: " << initialCoins << endl;
+            currentState = WIN;
+        }
+        glutPostRedisplay();
+        Sleep(100); // Faster frame rate
+    }
 }
 
 // A* for ghosts
@@ -302,6 +335,13 @@ void initMaze() {
             }
         }
     }
+    initialCoins = coins.size();
+}
+
+// Reset game for new run
+void resetGame() {
+    initMaze();
+    currentState = PLAYING;
 }
 
 // Draw text on screen
@@ -323,89 +363,104 @@ void display() {
     glMatrixMode(GL_MODELVIEW);
     glLoadIdentity();
 
-    double cellSize = 2.0 / MSZ;
+    if (currentState == MENU) {
+        glColor3d(1, 1, 1);
+        drawText(-0.3, 0.2, "Pac-Man AI Game");
+        drawText(-0.4, 0, "Left-click to start");
+        drawText(-0.5, -0.2, "Ghosts use A* to chase");
+        drawText(-0.5, -0.4, "Pac-Man uses BFS to evade");
+    } else if (currentState == PLAYING) {
+        double cellSize = 2.0 / MSZ;
 
-    for (int i = 0; i < MSZ; i++) {
-        for (int j = 0; j < MSZ; j++) {
-            double x = -1 + j * cellSize;
-            double y = 1 - i * cellSize;
+        for (int i = 0; i < MSZ; i++) {
+            for (int j = 0; j < MSZ; j++) {
+                double x = -1 + j * cellSize;
+                double y = 1 - i * cellSize;
 
-            if (maze[i][j] == WALL) {
-                glColor3d(0, 0, 0);
-            } else {
-                glColor3d(1, 1, 1);
+                if (maze[i][j] == WALL) {
+                    glColor3d(0, 0, 0);
+                } else {
+                    glColor3d(1, 1, 1);
+                }
+
+                glBegin(GL_QUADS);
+                glVertex2d(x, y);
+                glVertex2d(x + cellSize, y);
+                glVertex2d(x + cellSize, y - cellSize);
+                glVertex2d(x, y - cellSize);
+                glEnd();
             }
-
-            glBegin(GL_QUADS);
-            glVertex2d(x, y);
-            glVertex2d(x + cellSize, y);
-            glVertex2d(x + cellSize, y - cellSize);
-            glVertex2d(x, y - cellSize);
-            glEnd();
         }
-    }
 
-    // Draw coins
-    glColor3d(1, 1, 0);
-    glPointSize(5);
-    glBegin(GL_POINTS);
-    for (auto& coin : coins) {
-        double x = -1 + coin.col * cellSize + cellSize/2;
-        double y = 1 - coin.row * cellSize - cellSize/2;
-        glVertex2d(x, y);
-    }
-    glEnd();
+        // Draw coins
+        glColor3d(1, 1, 0);
+        glPointSize(5);
+        glBegin(GL_POINTS);
+        for (auto& coin : coins) {
+            double x = -1 + coin.col * cellSize + cellSize/2;
+            double y = 1 - coin.row * cellSize - cellSize/2;
+            glVertex2d(x, y);
+        }
+        glEnd();
 
-    // Draw Pac-Man
-    glColor3d(1, 1, 0);
-    double px = -1 + pacmanPos.col * cellSize + cellSize/2;
-    double py = 1 - pacmanPos.row * cellSize - cellSize/2;
-    glPushMatrix();
-    glTranslatef(px, py, 0);
-    glutSolidSphere(cellSize/2 * 0.8, 10, 10);
-    glPopMatrix();
-
-    // Draw ghosts
-    for (int i = 0; i < 3; i++) {
-        if (i == 0) glColor3d(1, 0, 0);
-        else if (i == 1) glColor3d(0, 1, 0);
-        else glColor3d(0, 0, 1);
-        double gx = -1 + ghostPos[i].col * cellSize + cellSize/2;
-        double gy = 1 - ghostPos[i].row * cellSize - cellSize/2;
+        // Draw Pac-Man
+        glColor3d(1, 1, 0);
+        double px = -1 + pacmanPos.col * cellSize + cellSize/2;
+        double py = 1 - pacmanPos.row * cellSize - cellSize/2;
         glPushMatrix();
-        glTranslatef(gx, gy, 0);
+        glTranslatef(px, py, 0);
         glutSolidSphere(cellSize/2 * 0.8, 10, 10);
         glPopMatrix();
-    }
 
-    // Draw score
-    glColor3d(1, 1, 1);
-    char scoreText[50];
-    sprintf(scoreText, "Coins left: %d", (int)coins.size());
-    drawText(-0.9, 0.9, scoreText);
+        // Draw ghosts
+        for (int i = 0; i < 3; i++) {
+            if (i == 0) glColor3d(1, 0, 0);
+            else if (i == 1) glColor3d(0, 1, 0);
+            else glColor3d(0, 0, 1);
+            double gx = -1 + ghostPos[i].col * cellSize + cellSize/2;
+            double gy = 1 - ghostPos[i].row * cellSize - cellSize/2;
+            glPushMatrix();
+            glTranslatef(gx, gy, 0);
+            glutSolidSphere(cellSize/2 * 0.8, 10, 10);
+            glPopMatrix();
+        }
+
+        // Draw score
+        glColor3d(1, 1, 1);
+        char scoreText[50];
+        sprintf(scoreText, "Coins left: %d", (int)coins.size());
+        drawText(-0.9, 0.9, scoreText);
+    } else if (currentState == GAME_OVER) {
+        glColor3d(1, 0, 0);
+        drawText(-0.2, 0.2, "GAME OVER");
+        char scoreText[50];
+        sprintf(scoreText, "Final score: %d", initialCoins - (int)coins.size());
+        drawText(-0.3, 0, scoreText);
+        drawText(-0.4, -0.2, "Left-click to restart");
+    } else if (currentState == WIN) {
+        glColor3d(0, 1, 0);
+        drawText(-0.15, 0.2, "YOU WIN!");
+        char scoreText[50];
+        sprintf(scoreText, "Final score: %d", initialCoins);
+        drawText(-0.3, 0, scoreText);
+        drawText(-0.4, -0.2, "Left-click to restart");
+    }
 
     glutSwapBuffers();
 }
 
-// Idle function for game loop
-void idle() {
-    movePacman();
-    moveGhosts();
-    if (checkCollision()) {
-        cout << "Game Over! Final score: " << (MSZ*MSZ - coins.size()) << endl;
-        exit(0);
+// Mouse callback for menu interaction
+void mouse(int button, int state, int x, int y) {
+    if (button == GLUT_LEFT_BUTTON && state == GLUT_DOWN) {
+        if (currentState == MENU || currentState == GAME_OVER || currentState == WIN) {
+            resetGame();
+        }
     }
-    if (coins.empty()) {
-        cout << "You Win! Final score: " << (MSZ*MSZ) << endl;
-        exit(0);
-    }
-    glutPostRedisplay();
-    Sleep(100); // Faster frame rate
 }
 
 int main(int argc, char* argv[]) {
     srand(time(NULL));
-    initMaze();
+    // initMaze(); // Removed - will be called in resetGame
 
     glutInit(&argc, argv);
     glutInitDisplayMode(GLUT_RGB | GLUT_DOUBLE);
@@ -416,6 +471,7 @@ int main(int argc, char* argv[]) {
 
     glutDisplayFunc(display);
     glutIdleFunc(idle);
+    glutMouseFunc(mouse);
 
     glutMainLoop();
     return 0;
