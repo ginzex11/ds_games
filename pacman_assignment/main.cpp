@@ -11,6 +11,7 @@
 
 #include <GL/freeglut.h>
 #include <GL/glut.h>
+
 // #include "glew.h"  // Commented out to avoid compilation issues
 
 #include "Cell.h"
@@ -405,7 +406,7 @@ void display() {
                 if (maze[i][j] == WALL) {
                     glColor3d(0, 0, 0);
                 } else {
-                    glColor3d(1, 1, 1);
+                    glColor3d(0.2, 0.2, 0.2); // Dark gray for better contrast with yellow coins and Pacman
                 }
 
                 glBegin(GL_QUADS);
