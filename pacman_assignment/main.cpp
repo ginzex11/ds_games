@@ -94,10 +94,10 @@ void idle() {
     static int frameCount = 0;
     frameCount++;
     if (currentState == PLAYING) {
-        if (frameCount % 6 != 0) { // Move Pac-Man 5/6 frames for slower speed
+        if (frameCount % 2 == 0) { // Move Pac-Man every 4 frames for consistent speed
             movePacman();
         }
-        if (frameCount % 2 == 0) { // Move ghosts every 3 frames to balance speed
+        if (frameCount % 3 == 0) { // Move ghosts every 8 frames (slower than Pac-Man)
             moveGhosts();
         }
         if (checkCollision()) {
@@ -193,196 +193,147 @@ vector<Position> aStar(Position start, Position goal) {
     return {};
 }
 
-// BFS limited depth for Pac-Man
-Position bfsLimited(Position start, int maxDepth) {
+// BFS limited depth for Pac-Man - returns the next move direction
+int bfsLimitedForEscape(Position start, int maxDepth) {
     queue<pair<Position, int>> q;
     vector<vector<bool>> visited(MSZ, vector<bool>(MSZ, false));
     q.push({start, 0});
     visited[start.row][start.col] = true;
 
-    while (!q.empty()) {
-        auto [curr, depth] = q.front();
-        q.pop();
+    // Find closest ghost first
+    Position closestGhost = ghostPos[0];
+    double minDist = heuristic(start, ghostPos[0]);
+    for (int i = 1; i < 3; i++) {
+        double dist = heuristic(start, ghostPos[i]);
+        if (dist < minDist) {
+            minDist = dist;
+            closestGhost = ghostPos[i];
+        }
+    }
 
-        if (depth >= maxDepth) continue;
-
-        for (auto& dir : directions) {
-            int nr = curr.row + dir[0];
-            int nc = curr.col + dir[1];
-            if (nr >= 0 && nr < MSZ && nc >= 0 && nc < MSZ && maze[nr][nc] != WALL && !visited[nr][nc]) {
-                visited[nr][nc] = true;
-                q.push({Position(nr, nc), depth + 1});
-                
-                // Check if ghost is here
-                for (auto& gp : ghostPos) {
-                    if (gp.row == nr && gp.col == nc) {
-                        // Found ghost, calculate position away from it
-                        int dr = nr - start.row;
-                        int dc = nc - start.col;
-                        int away_r = start.row - dr;
-                        int away_c = start.col - dc;
-                        
-                        // Make sure the away position is valid
-                        if (away_r >= 0 && away_r < MSZ && away_c >= 0 && away_c < MSZ && maze[away_r][away_c] != WALL) {
-                            return Position(away_r, away_c);
-                        } else {
-                            // If away position is invalid, try to find a safe adjacent position
-                            for (auto& dir2 : directions) {
-                                int safe_r = start.row + dir2[0];
-                                int safe_c = start.col + dir2[1];
-                                if (safe_r >= 0 && safe_r < MSZ && safe_c >= 0 && safe_c < MSZ && maze[safe_r][safe_c] != WALL) {
-                                    bool safe = true;
-                                    for (auto& gp2 : ghostPos) {
-                                        if (abs(gp2.row - safe_r) + abs(gp2.col - safe_c) <= 2) {
-                                            safe = false;
-                                            break;
-                                        }
-                                    }
-                                    if (safe) return Position(safe_r, safe_c);
-                                }
-                            }
-                        }
-                    }
+    // If ghost is too close (distance <= 3), try to move away
+    if (minDist <= 3) {
+        int bestDir = -1;
+        double maxDist = 0;
+        
+        for (int dir = 0; dir < 4; dir++) {
+            int nr = start.row + directions[dir][0];
+            int nc = start.col + directions[dir][1];
+            if (nr >= 0 && nr < MSZ && nc >= 0 && nc < MSZ && maze[nr][nc] != WALL) {
+                double dist = heuristic(Position(nr, nc), closestGhost);
+                if (dist > maxDist) {
+                    maxDist = dist;
+                    bestDir = dir;
                 }
             }
         }
+        return bestDir;
     }
-    return Position(-1, -1); // No ghost found
+    
+    return -1; // No immediate threat
 }
 
-// Find nearest coin, preferring inner ones
+// Find nearest coin
 Position nearestCoin(Position start) {
     Position nearest = {-1, -1};
     double minDist = 1e9;
-    double centerDist = abs(start.row - MSZ/2) + abs(start.col - MSZ/2);
     for (auto& coin : coins) {
-        double dist = abs(coin.row - start.row) + abs(coin.col - start.col);
-        double coinCenterDist = abs(coin.row - MSZ/2) + abs(coin.col - MSZ/2);
-        // Prefer coins closer to center if they are not too far
-        if (coinCenterDist < centerDist + 10) { // Allow some outer coins
-            if (dist < minDist) {
-                minDist = dist;
-                nearest = coin;
-            }
-        }
-    }
-    if (nearest.row == -1) { // Fallback to any coin
-        for (auto& coin : coins) {
-            double dist = abs(coin.row - start.row) + abs(coin.col - start.col);
-            if (dist < minDist) {
-                minDist = dist;
-                nearest = coin;
-            }
+        double dist = heuristic(coin, start);
+        if (dist < minDist) {
+            minDist = dist;
+            nearest = coin;
         }
     }
     return nearest;
 }
 
-// Move Pac-Man
+// Get direction to move towards target
+int getDirectionToTarget(Position from, Position to) {
+    int dr = to.row - from.row;
+    int dc = to.col - from.col;
+    
+    // Choose direction based on larger distance
+    if (abs(dr) >= abs(dc)) {
+        if (dr > 0) return 1; // DOWN
+        if (dr < 0) return 0; // UP
+    } else {
+        if (dc > 0) return 3; // RIGHT
+        if (dc < 0) return 2; // LEFT
+    }
+    return -1;
+}
+
+// Move Pac-Man with improved logic
 void movePacman() {
-    Position avoid = bfsLimited(pacmanPos, 10); // Depth-limited BFS to detect closest ghost
-    Position target;
-    if (avoid.row != -1) {
-        target = avoid; // Move away from ghost
+    int escapeDir = bfsLimitedForEscape(pacmanPos, 5);
+    int chosenDir = -1;
+    
+    if (escapeDir != -1) {
+        // Ghost is close, try to escape
+        chosenDir = escapeDir;
     } else {
-        target = nearestCoin(pacmanPos); // Move toward nearest coin, preferring inner
-    }
-
-    if (target.row == -1) return; // No target
-
-    // Determine direction
-    int dr = target.row - pacmanPos.row;
-    int dc = target.col - pacmanPos.col;
-
-    // Prefer orthogonal movement to avoid diagonal skipping
-    int nr = pacmanPos.row;
-    int nc = pacmanPos.col;
-    if (abs(dr) > abs(dc)) {
-        // Move vertically
-        nr += (dr > 0 ? 1 : -1);
-    } else if (abs(dc) > abs(dr)) {
-        // Move horizontally
-        nc += (dc > 0 ? 1 : -1);
-    } else {
-        // Equal, choose randomly or based on last direction
-        if (rand() % 2 == 0) {
-            if (dr != 0) nr += (dr > 0 ? 1 : -1);
-        } else {
-            if (dc != 0) nc += (dc > 0 ? 1 : -1);
+        // No immediate threat, go for nearest coin
+        Position target = nearestCoin(pacmanPos);
+        if (target.row != -1) {
+            chosenDir = getDirectionToTarget(pacmanPos, target);
         }
     }
-
-    if (nr >= 0 && nr < MSZ && nc >= 0 && nc < MSZ && maze[nr][nc] != WALL) {
-        pacmanPos = Position(nr, nc);
-        // Update last direction
-        if (nr != pacmanPos.row) {
-            lastPacDir = (nr > pacmanPos.row) ? 1 : 0; // DOWN or UP
-        } else if (nc != pacmanPos.col) {
-            lastPacDir = (nc > pacmanPos.col) ? 3 : 2; // RIGHT or LEFT
-        }
-        // Check coin collection
-        auto it = find(coins.begin(), coins.end(), pacmanPos);
-        if (it != coins.end()) {
-            coins.erase(it);
-        }
-    } else {
-        // If preferred direction blocked, try the other if applicable
-        if (abs(dr) > abs(dc) && abs(dc) > 0) {
-            // Tried vertical, try horizontal
-            nc = pacmanPos.col + (dc > 0 ? 1 : -1);
-            if (nc >= 0 && nc < MSZ && maze[pacmanPos.row][nc] != WALL) {
-                pacmanPos = Position(pacmanPos.row, nc);
-                lastPacDir = (nc > pacmanPos.col) ? 3 : 2;
-                auto it = find(coins.begin(), coins.end(), pacmanPos);
-                if (it != coins.end()) {
-                    coins.erase(it);
-                }
-                return;
-            }
-        } else if (abs(dc) > abs(dr) && abs(dr) > 0) {
-            // Tried horizontal, try vertical
-            nr = pacmanPos.row + (dr > 0 ? 1 : -1);
-            if (nr >= 0 && nr < MSZ && maze[nr][pacmanPos.col] != WALL) {
-                pacmanPos = Position(nr, pacmanPos.col);
-                lastPacDir = (nr > pacmanPos.row) ? 1 : 0;
-                auto it = find(coins.begin(), coins.end(), pacmanPos);
-                if (it != coins.end()) {
-                    coins.erase(it);
-                }
-                return;
-            }
-        }
-        // If still blocked, find alternative safe move
-        Position bestMove = pacmanPos;
-        double maxDist = 0;
-        for (auto& d : directions) {
-            int nnr = pacmanPos.row + d[0];
-            int nnc = pacmanPos.col + d[1];
-            if (nnr >= 0 && nnr < MSZ && nnc >= 0 && nnc < MSZ && maze[nnr][nnc] != WALL) {
-                double minGhostDist = 1e9;
-                for (auto& gp : ghostPos) {
-                    double dist = abs(gp.row - nnr) + abs(gp.col - nnc);
-                    if (dist < minGhostDist) minGhostDist = dist;
-                }
-                if (minGhostDist > maxDist) {
-                    maxDist = minGhostDist;
-                    bestMove = Position(nnr, nnc);
-                }
-            }
-        }
-        if (bestMove != pacmanPos) {
-            pacmanPos = bestMove;
-            // Update last direction
-            int adr = bestMove.row - pacmanPos.row;
-            int adc = bestMove.col - pacmanPos.col;
-            if (adr < 0) lastPacDir = 0;
-            else if (adr > 0) lastPacDir = 1;
-            else if (adc < 0) lastPacDir = 2;
-            else if (adc > 0) lastPacDir = 3;
+    
+    // Try the chosen direction
+    if (chosenDir != -1) {
+        int nr = pacmanPos.row + directions[chosenDir][0];
+        int nc = pacmanPos.col + directions[chosenDir][1];
+        
+        if (nr >= 0 && nr < MSZ && nc >= 0 && nc < MSZ && maze[nr][nc] != WALL) {
+            pacmanPos = Position(nr, nc);
+            lastPacDir = chosenDir;
+            
+            // Check coin collection
             auto it = find(coins.begin(), coins.end(), pacmanPos);
             if (it != coins.end()) {
                 coins.erase(it);
             }
+            return;
+        }
+    }
+    
+    // If chosen direction is blocked, try any available direction
+    // Prioritize directions that keep distance from ghosts
+    int bestDir = -1;
+    double maxMinGhostDist = -1;
+    
+    for (int dir = 0; dir < 4; dir++) {
+        int nr = pacmanPos.row + directions[dir][0];
+        int nc = pacmanPos.col + directions[dir][1];
+        
+        if (nr >= 0 && nr < MSZ && nc >= 0 && nc < MSZ && maze[nr][nc] != WALL) {
+            // Calculate minimum distance to any ghost from this position
+            double minGhostDist = 1e9;
+            for (int i = 0; i < 3; i++) {
+                double dist = heuristic(Position(nr, nc), ghostPos[i]);
+                if (dist < minGhostDist) {
+                    minGhostDist = dist;
+                }
+            }
+            
+            if (minGhostDist > maxMinGhostDist) {
+                maxMinGhostDist = minGhostDist;
+                bestDir = dir;
+            }
+        }
+    }
+    
+    // Move in the safest available direction
+    if (bestDir != -1) {
+        int nr = pacmanPos.row + directions[bestDir][0];
+        int nc = pacmanPos.col + directions[bestDir][1];
+        pacmanPos = Position(nr, nc);
+        lastPacDir = bestDir;
+        
+        // Check coin collection
+        auto it = find(coins.begin(), coins.end(), pacmanPos);
+        if (it != coins.end()) {
+            coins.erase(it);
         }
     }
 }
