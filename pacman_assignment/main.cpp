@@ -97,7 +97,9 @@ void idle() {
         if (frameCount % 6 != 0) { // Move Pac-Man 5/6 frames for slower speed
             movePacman();
         }
-        moveGhosts(); // Ghosts move every frame
+        if (frameCount % 2 == 0) { // Move ghosts every 3 frames to balance speed
+            moveGhosts();
+        }
         if (checkCollision()) {
             cout << "Game Over! Final score: " << (initialCoins - (int)coins.size()) << endl;
             currentState = GAME_OVER;
