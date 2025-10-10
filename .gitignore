@@ -1,0 +1,7 @@
+build/
+.vscode/
+*.user
+*.log
+*.cache
+.DS_Store
+Thumbs.db
