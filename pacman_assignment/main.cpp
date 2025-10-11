@@ -8,11 +8,11 @@
 #include <algorithm>
 #include <random>
 #include <windows.h>
+#include <climits>
+#include <set>
 
 #include <GL/freeglut.h>
 #include <GL/glut.h>
-
-// #include "glew.h"  // Commented out to avoid compilation issues
 
 #include "Cell.h"
 #include "Node.h"
@@ -22,8 +22,7 @@ using namespace std;
 
 const int WIDTH = 600;
 const int HEIGHT = 600;
-
-const int MSZ = 35; // Smaller maze for visibility
+const int MSZ = 25;
 
 const int WALL = 1;
 const int SPACE = 0;
@@ -47,6 +46,10 @@ struct Position {
     bool operator!=(const Position& other) const {
         return !(*this == other);
     }
+    bool operator<(const Position& other) const {
+        if (row != other.row) return row < other.row;
+        return col < other.col;
+    }
 };
 
 Position pacmanPos;
@@ -54,11 +57,9 @@ Position ghostPos[3];
 vector<Position> coins;
 int initialCoins;
 
-int directions[4][2] = {{-1, 0}, {1, 0}, {0, -1}, {0, 1}}; // up, down, left, right
+int directions[4][2] = {{-1, 0}, {1, 0}, {0, -1}, {0, 1}}; // 0: up, 1: down, 2: left, 3: right
+int lastPacDir = -1;
 
-int lastPacDir = -1; // Track Pac-Man's last direction for ghost prediction
-
-// Forward declarations
 void movePacman();
 void moveGhosts();
 bool checkCollision();
@@ -66,174 +67,187 @@ void initMaze();
 void resetGame();
 void drawText(float x, float y, const char* text);
 void display();
-void idle();
+void timer(int value);
 void mouse(int button, int state, int x, int y);
 void placeTShape(int i, int j);
 void placeHShape(int i, int j);
 void placeSShape(int i, int j);
 
 double heuristic(Position a, Position b) {
-    return abs(a.row - b.row) + abs(a.col - b.col); // Manhattan
+    return abs(a.row - b.row) + abs(a.col - b.col);
 }
 
-// Predict Pac-Man's next position based on last direction
 Position predictPacman(Position pacPos, int lastDir) {
     Position pred = pacPos;
-    if (lastDir == 0) pred.row--; // UP
-    else if (lastDir == 1) pred.row++; // DOWN
-    else if (lastDir == 2) pred.col--; // LEFT
-    else if (lastDir == 3) pred.col++; // RIGHT
+    if (lastDir == 0) pred.row--;
+    else if (lastDir == 1) pred.row++;
+    else if (lastDir == 2) pred.col--;
+    else if (lastDir == 3) pred.col++;
     if (pred.row >= 0 && pred.row < MSZ && pred.col >= 0 && pred.col < MSZ && maze[pred.row][pred.col] != WALL) {
         return pred;
     }
-    return pacPos; // Fallback
+    return pacPos;
 }
 
-// Idle function for game loop
-void idle() {
-    static int frameCount = 0;
-    frameCount++;
-    if (currentState == PLAYING) {
-        if (frameCount % 2 == 0) { // Move Pac-Man every 4 frames for consistent speed
-            movePacman();
-        }
-        if (frameCount % 3 == 0) { // Move ghosts every 8 frames (slower than Pac-Man)
-            moveGhosts();
-        }
-        if (checkCollision()) {
-            cout << "Game Over! Final score: " << (initialCoins - (int)coins.size()) << endl;
-            currentState = GAME_OVER;
-        }
-        if (coins.empty()) {
-            cout << "You Win! Final score: " << initialCoins << endl;
-            currentState = WIN;
-        }
-        glutPostRedisplay();
-#ifdef _WIN32
-        Sleep(100); // Faster frame rate
-#else
-        usleep(100000);
-#endif
-    }
-}
-
-// A* for ghosts
+// A* for ghosts with memory cleanup
 vector<Position> aStar(Position start, Position goal) {
-    // Implement A* using Node and priority_queue
+    set<Node*> allocatedNodes;
+    
     priority_queue<Node*, vector<Node*>, CompareNodes> openList;
     vector<vector<bool>> closed(MSZ, vector<bool>(MSZ, false));
-    vector<vector<Node*>> nodes(MSZ, vector<Node*>(MSZ, nullptr));
+    vector<vector<Node*>> bestNodes(MSZ, vector<Node*>(MSZ, nullptr));
 
     Node* startNode = new Node(new Cell(start.row, start.col, nullptr), 0, heuristic(start, goal));
+    allocatedNodes.insert(startNode);
     openList.push(startNode);
-    nodes[start.row][start.col] = startNode;
+    bestNodes[start.row][start.col] = startNode;
 
-    int steps = 0; // Prevent infinite loop
-    while (!openList.empty() && steps < MSZ * MSZ) {
+    vector<Position> resultPath;
+    int steps = 0;
+    const int MAX_STEPS = MSZ * MSZ * 2;
+
+    while (!openList.empty() && steps < MAX_STEPS) {
         steps++;
         Node* current = openList.top();
         openList.pop();
+
         Position currPos(current->getCell()->getRow(), current->getCell()->getCol());
+        if (closed[currPos.row][currPos.col]) continue;
 
         if (currPos == goal) {
-            // Reconstruct path
-            vector<Position> path;
             while (current != nullptr) {
-                path.push_back(Position(current->getCell()->getRow(), current->getCell()->getCol()));
+                resultPath.push_back(Position(current->getCell()->getRow(), current->getCell()->getCol()));
                 current = current->getParent();
             }
-            reverse(path.begin(), path.end());
-            
-            // Clean up memory
-            for (auto& row : nodes) {
-                for (auto& n : row) {
-                    if (n) {
-                        delete n->getCell();
-                        delete n;
-                    }
-                }
-            }
-            return path;
+            reverse(resultPath.begin(), resultPath.end());
+            break;
         }
 
         closed[currPos.row][currPos.col] = true;
 
-        for (auto& dir : directions) {
-            int nr = currPos.row + dir[0];
-            int nc = currPos.col + dir[1];
+        for (int k = 0; k < 4; ++k) {
+            int nr = currPos.row + directions[k][0];
+            int nc = currPos.col + directions[k][1];
+            
             if (nr >= 0 && nr < MSZ && nc >= 0 && nc < MSZ && maze[nr][nc] != WALL && !closed[nr][nc]) {
                 double g = current->getG() + 1;
                 double h = heuristic(Position(nr, nc), goal);
-                Node* neighbor = new Node(new Cell(nr, nc, nullptr), g, h, current);
                 
-                if (nodes[nr][nc] == nullptr || g + h < nodes[nr][nc]->getF()) {
-                    if (nodes[nr][nc]) {
-                        delete nodes[nr][nc]->getCell();
-                        delete nodes[nr][nc];
-                    }
-                    nodes[nr][nc] = neighbor;
+                if (bestNodes[nr][nc] == nullptr || g < bestNodes[nr][nc]->getG()) {
+                    Node* neighbor = new Node(new Cell(nr, nc, nullptr), g, h, current);
+                    allocatedNodes.insert(neighbor);
+                    bestNodes[nr][nc] = neighbor;
                     openList.push(neighbor);
-                } else {
-                    delete neighbor->getCell();
-                    delete neighbor;
                 }
             }
         }
     }
-    
-    // Clean up memory if no path found
-    for (auto& row : nodes) {
-        for (auto& n : row) {
-            if (n) {
-                delete n->getCell();
-                delete n;
-            }
-        }
+
+    for (Node* node : allocatedNodes) {
+        delete node->getCell();
+        delete node;
     }
-    return {};
+
+    return resultPath;
 }
 
-// BFS limited depth for Pac-Man - returns the next move direction
+// Limited-depth BFS for Pac-Man evasion
 int bfsLimitedForEscape(Position start, int maxDepth) {
-    queue<pair<Position, int>> q;
+    struct State {
+        Position pos;
+        int depth;
+        int first_dir;
+    };
+
+    queue<State> q;
     vector<vector<bool>> visited(MSZ, vector<bool>(MSZ, false));
-    q.push({start, 0});
+    q.push({start, 0, -1});
     visited[start.row][start.col] = true;
 
-    // Find closest ghost first
-    Position closestGhost = ghostPos[0];
-    double minDist = heuristic(start, ghostPos[0]);
-    for (int i = 1; i < 3; i++) {
-        double dist = heuristic(start, ghostPos[i]);
-        if (dist < minDist) {
-            minDist = dist;
-            closestGhost = ghostPos[i];
-        }
-    }
+    int min_dist = INT_MAX;
+    int closest_first_dir = -1;
+    Position closest_ghost = {-1, -1};
 
-    // If ghost is too close (distance <= 3), try to move away
-    if (minDist <= 3) {
-        int bestDir = -1;
-        double maxDist = 0;
-        
-        for (int dir = 0; dir < 4; dir++) {
-            int nr = start.row + directions[dir][0];
-            int nc = start.col + directions[dir][1];
-            if (nr >= 0 && nr < MSZ && nc >= 0 && nc < MSZ && maze[nr][nc] != WALL) {
-                double dist = heuristic(Position(nr, nc), closestGhost);
-                if (dist > maxDist) {
-                    maxDist = dist;
-                    bestDir = dir;
-                }
+    while (!q.empty()) {
+        State curr = q.front(); q.pop();
+
+        for (int g = 0; g < 3; g++) {
+            if (curr.pos == ghostPos[g] && curr.depth < min_dist) {
+                min_dist = curr.depth;
+                closest_first_dir = curr.first_dir;
+                closest_ghost = curr.pos;
             }
         }
-        return bestDir;
+
+        if (curr.depth >= maxDepth) continue;
+
+        for (int d = 0; d < 4; d++) {
+            int nr = curr.pos.row + directions[d][0];
+            int nc = curr.pos.col + directions[d][1];
+            if (nr >= 0 && nr < MSZ && nc >= 0 && nc < MSZ && maze[nr][nc] != WALL && !visited[nr][nc]) {
+                visited[nr][nc] = true;
+                int fdir = (curr.depth == 0) ? d : curr.first_dir;
+                q.push({{nr, nc}, curr.depth + 1, fdir});
+            }
+        }
     }
-    
-    return -1; // No immediate threat
+
+    if (min_dist <= maxDepth && closest_ghost.row != -1) {
+        if (min_dist == 0) {
+            double max_dist = -1;
+            int best_dir = -1;
+            for (int d = 0; d < 4; d++) {
+                int nr = start.row + directions[d][0];
+                int nc = start.col + directions[d][1];
+                if (nr >= 0 && nr < MSZ && nc >= 0 && nc < MSZ && maze[nr][nc] != WALL) {
+                    double min_ghost_dist = 1e9;
+                    for (int g = 0; g < 3; g++) {
+                        if (ghostPos[g] != start) {
+                            double dist = heuristic({nr, nc}, ghostPos[g]);
+                            if (dist < min_ghost_dist) min_ghost_dist = dist;
+                        }
+                    }
+                    if (min_ghost_dist > max_dist) {
+                        max_dist = min_ghost_dist;
+                        best_dir = d;
+                    }
+                }
+            }
+            return best_dir;
+        }
+
+        int opp_dir;
+        if (closest_first_dir < 2) {
+            opp_dir = 1 - closest_first_dir;
+        } else {
+            opp_dir = 5 - closest_first_dir;
+        }
+
+        int nr = start.row + directions[opp_dir][0];
+        int nc = start.col + directions[opp_dir][1];
+        if (nr >= 0 && nr < MSZ && nc >= 0 && nc < MSZ && maze[nr][nc] != WALL) {
+            return opp_dir;
+        } else {
+            double max_dist = -1;
+            int best_dir = -1;
+            for (int d = 0; d < 4; d++) {
+                nr = start.row + directions[d][0];
+                nc = start.col + directions[d][1];
+                if (nr >= 0 && nr < MSZ && nc >= 0 && nc < MSZ && maze[nr][nc] != WALL) {
+                    double dist = heuristic({nr, nc}, closest_ghost);
+                    if (dist > max_dist) {
+                        max_dist = dist;
+                        best_dir = d;
+                    }
+                }
+            }
+            return best_dir;
+        }
+    }
+
+    return -1;
 }
 
-// Find nearest coin
 Position nearestCoin(Position start) {
     Position nearest = {-1, -1};
     double minDist = 1e9;
@@ -247,39 +261,33 @@ Position nearestCoin(Position start) {
     return nearest;
 }
 
-// Get direction to move towards target
 int getDirectionToTarget(Position from, Position to) {
     int dr = to.row - from.row;
     int dc = to.col - from.col;
     
-    // Choose direction based on larger distance
     if (abs(dr) >= abs(dc)) {
-        if (dr > 0) return 1; // DOWN
-        if (dr < 0) return 0; // UP
+        if (dr > 0) return 1;
+        if (dr < 0) return 0;
     } else {
-        if (dc > 0) return 3; // RIGHT
-        if (dc < 0) return 2; // LEFT
+        if (dc > 0) return 3;
+        if (dc < 0) return 2;
     }
     return -1;
 }
 
-// Move Pac-Man with improved logic
 void movePacman() {
     int escapeDir = bfsLimitedForEscape(pacmanPos, 5);
     int chosenDir = -1;
     
     if (escapeDir != -1) {
-        // Ghost is close, try to escape
         chosenDir = escapeDir;
     } else {
-        // No immediate threat, go for nearest coin
         Position target = nearestCoin(pacmanPos);
         if (target.row != -1) {
             chosenDir = getDirectionToTarget(pacmanPos, target);
         }
     }
     
-    // Try the chosen direction
     if (chosenDir != -1) {
         int nr = pacmanPos.row + directions[chosenDir][0];
         int nc = pacmanPos.col + directions[chosenDir][1];
@@ -288,7 +296,6 @@ void movePacman() {
             pacmanPos = Position(nr, nc);
             lastPacDir = chosenDir;
             
-            // Check coin collection
             auto it = find(coins.begin(), coins.end(), pacmanPos);
             if (it != coins.end()) {
                 coins.erase(it);
@@ -297,8 +304,7 @@ void movePacman() {
         }
     }
     
-    // If chosen direction is blocked, try any available direction
-    // Prioritize directions that keep distance from ghosts
+    // Fallback with hysteresis: prefer perpendicular directions to last move to reduce back-forth
     int bestDir = -1;
     double maxMinGhostDist = -1;
     
@@ -307,30 +313,45 @@ void movePacman() {
         int nc = pacmanPos.col + directions[dir][1];
         
         if (nr >= 0 && nr < MSZ && nc >= 0 && nc < MSZ && maze[nr][nc] != WALL) {
-            // Calculate minimum distance to any ghost from this position
             double minGhostDist = 1e9;
             for (int i = 0; i < 3; i++) {
                 double dist = heuristic(Position(nr, nc), ghostPos[i]);
-                if (dist < minGhostDist) {
-                    minGhostDist = dist;
-                }
+                if (dist < minGhostDist) minGhostDist = dist;
             }
             
-            if (minGhostDist > maxMinGhostDist) {
-                maxMinGhostDist = minGhostDist;
+            // Add small bonus for directions perpendicular to last (to break ties)
+            double bonus = 0;
+            if (lastPacDir != -1) {
+                bool is_perp = abs(dir - lastPacDir) == 2 || (dir < 2 && lastPacDir >= 2) || (dir >= 2 && lastPacDir < 2);
+                if (is_perp) bonus = 0.1;
+            }
+            
+            double score = minGhostDist + bonus;
+            
+            if (score > maxMinGhostDist) {
+                maxMinGhostDist = score;
                 bestDir = dir;
             }
         }
     }
     
-    // Move in the safest available direction
+    if (bestDir == -1) {
+        for (int dir = 0; dir < 4; dir++) {
+            int nr = pacmanPos.row + directions[dir][0];
+            int nc = pacmanPos.col + directions[dir][1];
+            if (nr >= 0 && nr < MSZ && nc >= 0 && nc < MSZ && maze[nr][nc] != WALL) {
+                bestDir = dir;
+                break;
+            }
+        }
+    }
+    
     if (bestDir != -1) {
         int nr = pacmanPos.row + directions[bestDir][0];
         int nc = pacmanPos.col + directions[bestDir][1];
         pacmanPos = Position(nr, nc);
         lastPacDir = bestDir;
         
-        // Check coin collection
         auto it = find(coins.begin(), coins.end(), pacmanPos);
         if (it != coins.end()) {
             coins.erase(it);
@@ -338,16 +359,14 @@ void movePacman() {
     }
 }
 
-// Move ghosts
 void moveGhosts() {
     for (int i = 0; i < 3; i++) {
         Position goal = pacmanPos;
-        if (i == 0) { // First ghost predicts Pac-Man's position
+        if (i == 0) {
             goal = predictPacman(pacmanPos, lastPacDir);
         }
         vector<Position> path = aStar(ghostPos[i], goal);
         if (path.size() > 1) {
-            // Check if the next position is occupied by another ghost
             bool occupied = false;
             for (int j = 0; j < 3; j++) {
                 if (j != i && ghostPos[j] == path[1]) {
@@ -356,23 +375,21 @@ void moveGhosts() {
                 }
             }
             if (!occupied) {
-                ghostPos[i] = path[1]; // Move to next position
+                ghostPos[i] = path[1];
             }
         }
     }
 }
 
-// Check collision
 bool checkCollision() {
-    for (auto& gp : ghostPos) {
-        if (gp == pacmanPos) {
+    for (int i = 0; i < 3; i++) {
+        if (ghostPos[i] == pacmanPos) {
             return true;
         }
     }
     return false;
 }
 
-// Function to place a T shape wall
 void placeTShape(int i, int j) {
     if (i + 1 < MSZ && j - 1 >= 0 && j + 1 < MSZ) {
         maze[i][j] = WALL;
@@ -382,7 +399,6 @@ void placeTShape(int i, int j) {
     }
 }
 
-// Function to place an H shape wall
 void placeHShape(int i, int j) {
     if (i + 2 < MSZ && j - 1 >= 0 && j + 1 < MSZ) {
         maze[i][j] = WALL;
@@ -393,7 +409,6 @@ void placeHShape(int i, int j) {
     }
 }
 
-// Function to place an S shape wall
 void placeSShape(int i, int j) {
     if (i + 1 < MSZ && j + 2 < MSZ) {
         maze[i][j] = WALL;
@@ -403,7 +418,6 @@ void placeSShape(int i, int j) {
     }
 }
 
-// Function to check if maze is connected (Pac-Man can reach all coins)
 bool isMazeConnected() {
     vector<vector<bool>> visited(MSZ, vector<bool>(MSZ, false));
     queue<Position> q;
@@ -425,104 +439,97 @@ bool isMazeConnected() {
     return reachableCoins == (int)coins.size();
 }
 
-// Initialize maze
 void initMaze() {
-    static int regenAttempts = 0;
-    regenAttempts++;
-    
-    srand(time(NULL)); // Randomize for each game
-    
-    // Create a simple maze with walls
-    for (int i = 0; i < MSZ; i++) {
-        for (int j = 0; j < MSZ; j++) {
-            if (i == 0 || i == MSZ-1 || j == 0 || j == MSZ-1) {
-                maze[i][j] = WALL; // Solid boundaries
-            } else if ((i % 2 == 0 && j % 2 == 0)) {
-                maze[i][j] = WALL; // Basic internal walls
-            } else if (rand() % 8 == 0) {
-                // Check if any diagonal neighbor is a wall to avoid diagonal touching
-                bool hasDiagonalWall = false;
-                if (i > 0 && j > 0 && maze[i-1][j-1] == WALL) hasDiagonalWall = true;
-                if (i > 0 && j < MSZ-1 && maze[i-1][j+1] == WALL) hasDiagonalWall = true;
-                if (i < MSZ-1 && j > 0 && maze[i+1][j-1] == WALL) hasDiagonalWall = true;
-                if (i < MSZ-1 && j < MSZ-1 && maze[i+1][j+1] == WALL) hasDiagonalWall = true;
-                if (!hasDiagonalWall) {
+    int regenAttempts = 0;
+    bool valid = false;
+    while (!valid && regenAttempts < 10) {
+        regenAttempts++;
+        
+        srand(time(NULL) + regenAttempts);
+        
+        for (int i = 0; i < MSZ; i++) {
+            for (int j = 0; j < MSZ; j++) {
+                if (i == 0 || i == MSZ-1 || j == 0 || j == MSZ-1) {
                     maze[i][j] = WALL;
+                } else if ((i % 2 == 0 && j % 2 == 0)) {
+                    maze[i][j] = WALL;
+                } else if (rand() % 8 == 0) {
+                    bool hasDiagonalWall = false;
+                    if (i > 0 && j > 0 && maze[i-1][j-1] == WALL) hasDiagonalWall = true;
+                    if (i > 0 && j < MSZ-1 && maze[i-1][j+1] == WALL) hasDiagonalWall = true;
+                    if (i < MSZ-1 && j > 0 && maze[i+1][j-1] == WALL) hasDiagonalWall = true;
+                    if (i < MSZ-1 && j < MSZ-1 && maze[i+1][j+1] == WALL) hasDiagonalWall = true;
+                    if (!hasDiagonalWall) {
+                        maze[i][j] = WALL;
+                    } else {
+                        maze[i][j] = SPACE;
+                    }
                 } else {
                     maze[i][j] = SPACE;
                 }
-            } else {
-                maze[i][j] = SPACE;
             }
         }
-    }
 
-    // Add shaped walls randomly
-    for (int attempt = 0; attempt < 10; attempt++) { // Try 10 times to place shapes
-        int i = rand() % (MSZ - 5) + 2; // Avoid edges
-        int j = rand() % (MSZ - 5) + 2;
-        int shape = rand() % 3; // 0: T, 1: H, 2: S
-        if (maze[i][j] == SPACE) { // Only place if starting position is space
-            if (shape == 0) placeTShape(i, j);
-            else if (shape == 1) placeHShape(i, j);
-            else if (shape == 2) placeSShape(i, j);
-        }
-    }
-
-    // Add periodic walls inside perimeter to break loops
-    for (int i = 1; i < MSZ-1; i += 5) {
-        if (maze[1][i] == SPACE) maze[1][i] = WALL; // Top inner
-        if (maze[MSZ-2][i] == SPACE) maze[MSZ-2][i] = WALL; // Bottom inner
-        if (maze[i][1] == SPACE) maze[i][1] = WALL; // Left inner
-        if (maze[i][MSZ-2] == SPACE) maze[i][MSZ-2] = WALL; // Right inner
-    }
-
-    // Place Pac-Man
-    pacmanPos = Position(MSZ/2, MSZ/2);
-
-    // Place ghosts at random positions
-    vector<Position> availableSpaces;
-    for (int i = 1; i < MSZ-1; i++) {
-        for (int j = 1; j < MSZ-1; j++) {
-            if (maze[i][j] == SPACE && (i != MSZ/2 || j != MSZ/2)) { // Not Pac-Man's position
-                availableSpaces.push_back(Position(i, j));
-            }
-        }
-    }
-    
-    // Shuffle and pick 3 positions for ghosts
-    std::shuffle(availableSpaces.begin(), availableSpaces.end(), std::mt19937{std::random_device{}()});
-    for (int i = 0; i < 3 && i < availableSpaces.size(); i++) {
-        ghostPos[i] = availableSpaces[i];
-    }
-
-    // Clear and place coins - one on every floor space
-    coins.clear();
-    for (int i = 1; i < MSZ-1; i++) {
-        for (int j = 1; j < MSZ-1; j++) {
+        for (int attempt = 0; attempt < 10; attempt++) {
+            int i = rand() % (MSZ - 5) + 2;
+            int j = rand() % (MSZ - 5) + 2;
+            int shape = rand() % 3;
             if (maze[i][j] == SPACE) {
-                coins.push_back(Position(i, j));
+                if (shape == 0) placeTShape(i, j);
+                else if (shape == 1) placeHShape(i, j);
+                else placeSShape(i, j);
             }
         }
-    }
-    initialCoins = coins.size();
 
-    // Check connectivity, regenerate if not connected (with limit to prevent infinite loop)
-    if (!isMazeConnected() && regenAttempts < 10) {
-        initMaze(); // Recurse to regenerate
-    } else {
-        regenAttempts = 0; // Reset for next game
-        // If still not connected after 10 attempts, proceed anyway to avoid freeze
+        for (int i = 1; i < MSZ-1; i += 5) {
+            if (maze[1][i] == SPACE) maze[1][i] = WALL;
+            if (maze[MSZ-2][i] == SPACE) maze[MSZ-2][i] = WALL;
+            if (maze[i][1] == SPACE) maze[i][1] = WALL;
+            if (maze[i][MSZ-2] == SPACE) maze[i][MSZ-2] = WALL;
+        }
+
+        pacmanPos = Position(MSZ/2, MSZ/2);
+
+        vector<Position> availableSpaces;
+        for (int i = 1; i < MSZ-1; i++) {
+            for (int j = 1; j < MSZ-1; j++) {
+                if (maze[i][j] == SPACE && (i != MSZ/2 || j != MSZ/2)) {
+                    double dist = heuristic(Position(i, j), pacmanPos);
+                    if (dist > 10) {
+                        availableSpaces.push_back(Position(i, j));
+                    }
+                }
+            }
+        }
+
+        if (availableSpaces.size() < 3) {
+            continue;
+        }
+        
+        std::shuffle(availableSpaces.begin(), availableSpaces.end(), std::mt19937{std::random_device{}()});
+        for (int i = 0; i < 3 && i < availableSpaces.size(); i++) {
+            ghostPos[i] = availableSpaces[i];
+        }
+
+        coins.clear();
+        for (int i = 1; i < MSZ-1; i++) {
+            for (int j = 1; j < MSZ-1; j++) {
+                if (maze[i][j] == SPACE) {
+                    coins.push_back(Position(i, j));
+                }
+            }
+        }
+        initialCoins = coins.size();
+
+        valid = isMazeConnected();
     }
 }
 
-// Reset game for new run
 void resetGame() {
     initMaze();
     currentState = PLAYING;
 }
 
-// Draw text on screen
 void drawText(float x, float y, const char* text) {
     glRasterPos2f(x, y);
     for (const char* c = text; *c != '\0'; c++) {
@@ -530,11 +537,9 @@ void drawText(float x, float y, const char* text) {
     }
 }
 
-// Display function
 void display() {
     glClear(GL_COLOR_BUFFER_BIT);
 
-    // Set up 2D orthographic projection
     glMatrixMode(GL_PROJECTION);
     glLoadIdentity();
     glOrtho(-1, 1, -1, 1, -1, 1);
@@ -558,7 +563,7 @@ void display() {
                 if (maze[i][j] == WALL) {
                     glColor3d(0, 0, 0);
                 } else {
-                    glColor3d(0.2, 0.2, 0.2); // Dark gray for better contrast with yellow coins and Pacman
+                    glColor3d(0.2, 0.2, 0.2);
                 }
 
                 glBegin(GL_QUADS);
@@ -570,7 +575,6 @@ void display() {
             }
         }
 
-        // Draw coins
         glColor3d(1, 1, 0);
         glPointSize(5);
         glBegin(GL_POINTS);
@@ -581,7 +585,6 @@ void display() {
         }
         glEnd();
 
-        // Draw Pac-Man
         glColor3d(1, 1, 0);
         double px = -1 + pacmanPos.col * cellSize + cellSize/2;
         double py = 1 - pacmanPos.row * cellSize - cellSize/2;
@@ -590,7 +593,6 @@ void display() {
         glutSolidSphere(cellSize/2 * 0.8, 10, 10);
         glPopMatrix();
 
-        // Draw ghosts
         for (int i = 0; i < 3; i++) {
             if (i == 0) glColor3d(1, 0, 0);
             else if (i == 1) glColor3d(0, 1, 0);
@@ -603,31 +605,29 @@ void display() {
             glPopMatrix();
         }
 
-        // Draw score
         glColor3d(1, 1, 1);
         char scoreText[50];
         sprintf(scoreText, "Coins left: %d", (int)coins.size());
-        drawText(-0.95f, 0.95f, scoreText);  // Dynamic position: top-left corner, slightly inset
+        drawText(-0.95f, 0.95f, scoreText);
     } else if (currentState == GAME_OVER) {
         glColor3d(1, 0, 0);
         drawText(-0.2, 0.2, "GAME OVER");
         char scoreText[50];
         sprintf(scoreText, "Final score: %d", initialCoins - (int)coins.size());
         drawText(-0.3, 0, scoreText);
-        drawText(-0.4, -0.2, "Left-click to restart");
+        drawText(-0.5, -0.2, "Left-click or press R to restart, Q to quit");
     } else if (currentState == WIN) {
         glColor3d(0, 1, 0);
         drawText(-0.15, 0.2, "YOU WIN!");
         char scoreText[50];
         sprintf(scoreText, "Final score: %d", initialCoins);
         drawText(-0.3, 0, scoreText);
-        drawText(-0.4, -0.2, "Left-click to restart");
+        drawText(-0.5, -0.2, "Left-click or press R to restart, Q to quit");
     }
 
     glutSwapBuffers();
 }
 
-// Mouse callback for menu interaction
 void mouse(int button, int state, int x, int y) {
     if (button == GLUT_LEFT_BUTTON && state == GLUT_DOWN) {
         if (currentState == MENU || currentState == GAME_OVER || currentState == WIN) {
@@ -636,20 +636,49 @@ void mouse(int button, int state, int x, int y) {
     }
 }
 
+void keyboard(unsigned char key, int x, int y) {
+    if (key == 'q' || key == 'Q') {
+        exit(0);
+    } else if (key == 'r' || key == 'R') {
+        resetGame();
+    }
+}
+
+void timer(int value) {
+    static int frameCount = 0;
+    frameCount++;
+    if (currentState == PLAYING) {
+        if (frameCount % 2 == 0) {
+            movePacman();
+        }
+        if (frameCount % 3 == 0) {
+            moveGhosts();
+        }
+        if (checkCollision()) {
+            cout << "Game Over! Final score: " << (initialCoins - (int)coins.size()) << endl;
+            currentState = GAME_OVER;
+        }
+        if (coins.empty()) {
+            cout << "You Win! Final score: " << initialCoins << endl;
+            currentState = WIN;
+        }
+    }
+    glutPostRedisplay();
+    glutTimerFunc(100, timer, 0);
+}
+
 int main(int argc, char* argv[]) {
     srand(time(NULL));
-    // initMaze(); // Removed - will be called in resetGame
 
     glutInit(&argc, argv);
     glutInitDisplayMode(GLUT_RGB | GLUT_DOUBLE);
     glutInitWindowSize(WIDTH, HEIGHT);
     glutCreateWindow("Pac-Man AI");
 
-    // GLEW initialization removed - not needed for basic GLUT functionality
-
     glutDisplayFunc(display);
-    glutIdleFunc(idle);
     glutMouseFunc(mouse);
+    glutKeyboardFunc(keyboard);
+    glutTimerFunc(0, timer, 0);
 
     glutMainLoop();
     return 0;
