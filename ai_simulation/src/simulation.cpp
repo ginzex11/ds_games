@@ -275,21 +275,48 @@ void Simulation::renderCharacter(Character* character) {
     char typeChar = character->getTypeChar();
     drawCharInSquare(screenX + CELL_SIZE / 2, screenY + CELL_SIZE / 2, typeChar, 1.0f, 1.0f, 1.0f);
     
-    // Draw health bar BELOW the character square (smaller and separate)
+    // Draw health bar ABOVE the character square (floating health bar)
     float healthPercent = character->getHealth() / 100.0f;
     float barWidth = (CELL_SIZE - 8) * healthPercent;
     float barHeight = 3.0f;  // Thin bar
+    float barYPos = screenY + CELL_SIZE + 4;  // Position above character
     
     // Black background for health bar
-    drawSquare(screenX + 4, screenY - 6, CELL_SIZE - 8, 0.0f, 0.0f, 0.0f);
+    drawRectangle(screenX + 4, barYPos, CELL_SIZE - 8, barHeight, 0.0f, 0.0f, 0.0f);
     
-    // Green health bar on top
+    // Color-coded health bar
     if (healthPercent > 0.5f) {
-        drawSquare(screenX + 4, screenY - 6, barWidth, 0.0f, 1.0f, 0.0f);  // Green
+        drawRectangle(screenX + 4, barYPos, barWidth, barHeight, 0.0f, 1.0f, 0.0f);  // Green
     } else if (healthPercent > 0.25f) {
-        drawSquare(screenX + 4, screenY - 6, barWidth, 1.0f, 1.0f, 0.0f);  // Yellow
+        drawRectangle(screenX + 4, barYPos, barWidth, barHeight, 1.0f, 1.0f, 0.0f);  // Yellow
     } else {
-        drawSquare(screenX + 4, screenY - 6, barWidth, 1.0f, 0.0f, 0.0f);  // Red
+        drawRectangle(screenX + 4, barYPos, barWidth, barHeight, 1.0f, 0.0f, 0.0f);  // Red
+    }
+    
+    // Draw resource information below character based on type
+    float textYPos = screenY - 10;  // Position below character
+    
+    if (character->getType() == CharacterType::WARRIOR) {
+        Warrior* warrior = static_cast<Warrior*>(character);
+        int ammo = warrior->getAmmo();
+        std::string ammoText = std::to_string(ammo) + "/50";
+        
+        // Draw ammo in white with small text
+        drawText(screenX + 2, textYPos, ammoText.c_str(), 1.0f, 1.0f, 1.0f);
+    } else if (character->getType() == CharacterType::MEDIC) {
+        Medic* medic = static_cast<Medic*>(character);
+        int medicine = medic->getMedicineSupplies();
+        std::string medText = "M:" + std::to_string(medicine);
+        
+        // Draw medicine in light green
+        drawText(screenX + 2, textYPos, medText.c_str(), 0.5f, 1.0f, 0.5f);
+    } else if (character->getType() == CharacterType::SUPPLIER) {
+        Supplier* supplier = static_cast<Supplier*>(character);
+        int supplies = supplier->getAmmoSupplies();
+        std::string supText = "A:" + std::to_string(supplies);
+        
+        // Draw ammo supplies in yellow
+        drawText(screenX + 2, textYPos, supText.c_str(), 1.0f, 1.0f, 0.5f);
     }
 }
 

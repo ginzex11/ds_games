@@ -30,6 +30,7 @@ public:
     
     bool hasAmmo() const { return ammoSupplies > 0; }
     void collectAmmo() { ammoSupplies++; }
+    int getAmmoSupplies() const { return ammoSupplies; }  // Get current ammo supply count for UI
 };
 
 #endif // SUPPLIER_H
