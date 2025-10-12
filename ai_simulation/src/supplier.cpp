@@ -35,11 +35,14 @@ void Supplier::update(const Map& map, const std::vector<Character*>& allCharacte
         }
         
         if (!currentRecipient->isAlive()) {
-            // Recipient died, clear order
+            // Recipient died, clear order and stop immediately
             LOG_CHARACTER("[SUPPLIER " << teamToString(team) << "] Recipient died, clearing order\n");
             currentRecipient = nullptr;
             currentOrder = Order();
             returningFromWarehouse = false;
+            currentPath.clear();  // Clear path to stop moving
+            pathIndex = 0;
+            return;  // Stop execution immediately
         } else {
             // Check if adjacent to recipient (within 1 cell)
             float distance = position.manhattanDistance(currentRecipient->getPosition());

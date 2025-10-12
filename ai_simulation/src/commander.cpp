@@ -187,7 +187,7 @@ Order Commander::determineWarriorOrder(Character* warrior, const Map& map) {
 Order Commander::determineMedicOrder(Character* medic, const std::vector<Character*>& teamMembers, const Map& map) {
     // Find warriors needing healing
     for (Character* member : teamMembers) {
-        if (member->getType() == CharacterType::WARRIOR) {
+        if (member->getType() == CharacterType::WARRIOR && member->isAlive()) {  // Check if alive!
             Warrior* w = dynamic_cast<Warrior*>(member);
             if (w && w->getNeedsHealing()) {
                 LOG_CHARACTER("  [Commander] Assigning medic to heal " << teamToString(member->getTeam()) 
@@ -208,7 +208,7 @@ Order Commander::determineMedicOrder(Character* medic, const std::vector<Charact
 Order Commander::determineSupplierOrder(Character* supplier, const std::vector<Character*>& teamMembers, const Map& map) {
     // Find warriors needing ammo
     for (Character* member : teamMembers) {
-        if (member->getType() == CharacterType::WARRIOR) {
+        if (member->getType() == CharacterType::WARRIOR && member->isAlive()) {  // Check if alive!
             Warrior* w = dynamic_cast<Warrior*>(member);
             if (w && w->getNeedsAmmo()) {
                 return Order(OrderType::RESUPPLY, member->getPosition(), member);

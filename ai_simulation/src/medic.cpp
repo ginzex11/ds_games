@@ -35,11 +35,14 @@ void Medic::update(const Map& map, const std::vector<Character*>& allCharacters,
         }
         
         if (!currentPatient->isAlive()) {
-            // Patient died, clear order
+            // Patient died, clear order and stop immediately
             LOG_CHARACTER("[MEDIC " << teamToString(team) << "] Patient died, clearing order\n");
             currentPatient = nullptr;
             currentOrder = Order();
             returningFromWarehouse = false;
+            currentPath.clear();  // Clear path to stop moving
+            pathIndex = 0;
+            return;  // Stop execution immediately
         } else {
             // Check if adjacent to patient (within 1 cell)
             float distance = position.manhattanDistance(currentPatient->getPosition());
