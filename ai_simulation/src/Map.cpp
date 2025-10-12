@@ -98,6 +98,27 @@ void Map::placeWarehouses() {
     clearAndMark(blueMedicineWarehouse, WarehouseType::MEDICINE);
     clearAndMark(orangeAmmoWarehouse, WarehouseType::AMMO);
     clearAndMark(orangeMedicineWarehouse, WarehouseType::MEDICINE);
+    
+    // CRITICAL: Clear spawn areas for all units to prevent blocking
+    // Blue team spawn area (x=5-7, y=11-19)
+    for (int y = 11; y <= 19; ++y) {
+        for (int x = 5; x <= 7; ++x) {
+            Position pos(x, y);
+            if (isValidPosition(pos)) {
+                grid[pos.y][pos.x] = Cell(CellType::EMPTY);
+            }
+        }
+    }
+    
+    // Orange team spawn area (x=32-34, y=11-19)
+    for (int y = 11; y <= 19; ++y) {
+        for (int x = 32; x <= 34; ++x) {
+            Position pos(x, y);
+            if (isValidPosition(pos)) {
+                grid[pos.y][pos.x] = Cell(CellType::EMPTY);
+            }
+        }
+    }
 }
 
 /**

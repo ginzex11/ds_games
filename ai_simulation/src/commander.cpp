@@ -97,6 +97,40 @@ void Commander::buildCombinedVisibilityMap(const std::vector<Character*>& teamMe
 void Commander::issueOrders(const std::vector<Character*>& teamMembers, const Map& map) {
     LOG_CHARACTER("[COMMANDER " << teamToString(team) << "] Issuing orders to team...\n");
     
+    // FIRST PASS: Check for critical situations that need immediate response
+    // Find retreating warriors that need urgent medical attention
+    Warrior* criticalWarrior = nullptr;
+    Character* teamMedic = nullptr;
+    
+    for (Character* member : teamMembers) {
+        if (member->getType() == CharacterType::MEDIC) {
+            teamMedic = member;
+        }
+        if (member->getType() == CharacterType::WARRIOR && member->isAlive()) {
+            Warrior* w = dynamic_cast<Warrior*>(member);
+            if (w && w->getIsRetreating() && !criticalWarrior) {
+                criticalWarrior = w;  // Found first retreating warrior
+            }
+        }
+    }
+    
+    // CRITICAL: If we have a retreating warrior and a medic, assign medic immediately
+    if (criticalWarrior && teamMedic) {
+        // Check if medic is already healing this specific warrior
+        Medic* m = dynamic_cast<Medic*>(teamMedic);
+        bool alreadyAssigned = (m && m->getCurrentPatient() == criticalWarrior);
+        
+        if (!alreadyAssigned) {
+            LOG_CHARACTER("  [Commander] CRITICAL OVERRIDE: Reassigning medic to RETREATING warrior at (" 
+                     << criticalWarrior->getPosition().x << "," << criticalWarrior->getPosition().y 
+                     << ") with HP:" << criticalWarrior->getHealth() << "\n");
+            
+            Order healOrder = Order(OrderType::HEAL, criticalWarrior->getPosition(), criticalWarrior);
+            teamMedic->executeOrder(healOrder, map);
+        }
+    }
+    
+    // SECOND PASS: Regular order assignment
     for (Character* member : teamMembers) {
         // Check if warrior is retreating - DO NOT interrupt retreat!
         if (member->getType() == CharacterType::WARRIOR) {
@@ -105,6 +139,12 @@ void Commander::issueOrders(const std::vector<Character*>& teamMembers, const Ma
                 LOG_CHARACTER("  - W is RETREATING, skipping (do not interrupt!)\n");
                 continue;  // Warriors in retreat mode manage themselves
             }
+        }
+        
+        // Skip medic if we just reassigned them to critical patient
+        if (member == teamMedic && criticalWarrior) {
+            LOG_CHARACTER("  - M assigned to critical patient, skipping\n");
+            continue;
         }
         
         // Only issue new orders if member doesn't have an active order
@@ -173,13 +213,32 @@ Order Commander::determineWarriorOrder(Character* warrior, const Map& map) {
     }
     
     // No enemies known - patrol aggressively towards enemy territory
+    // Give each warrior a slightly different patrol position to avoid clustering
+    Position warriorPos = warrior->getPosition();
     Position patrolTarget;
+    
     if (team == Team::BLUE) {
         // Blue team patrols towards right side (orange territory)
-        patrolTarget = Position(GRID_WIDTH * 3 / 4, GRID_HEIGHT / 2);
+        int baseX = GRID_WIDTH * 3 / 4;
+        int baseY = GRID_HEIGHT / 2;
+        
+        // Spread warriors vertically based on their starting Y position
+        if (warriorPos.y < GRID_HEIGHT / 2) {
+            patrolTarget = Position(baseX, baseY - 3);  // Lower patrol point
+        } else {
+            patrolTarget = Position(baseX, baseY + 3);  // Upper patrol point
+        }
     } else {
         // Orange team patrols towards left side (blue territory)
-        patrolTarget = Position(GRID_WIDTH / 4, GRID_HEIGHT / 2);
+        int baseX = GRID_WIDTH / 4;
+        int baseY = GRID_HEIGHT / 2;
+        
+        // Spread warriors vertically based on their starting Y position
+        if (warriorPos.y < GRID_HEIGHT / 2) {
+            patrolTarget = Position(baseX, baseY - 3);  // Lower patrol point
+        } else {
+            patrolTarget = Position(baseX, baseY + 3);  // Upper patrol point
+        }
     }
     
     // Only give patrol order if warrior is not already near the patrol point

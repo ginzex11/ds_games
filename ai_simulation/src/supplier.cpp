@@ -65,9 +65,31 @@ void Supplier::update(const Map& map, const std::vector<Character*>& allCharacte
                 travelToWarehouse(map);
             } else {
                 // Have ammo or returning, move towards recipient
-                LOG_CHARACTER("[SUPPLIER " << teamToString(team) << "] Moving towards recipient at (" 
-                         << currentRecipient->getPosition().x << "," << currentRecipient->getPosition().y << ")\n");
-                travelToRecipient(map);
+                Position recipientPos = currentRecipient->getPosition();
+                
+                // Update path if recipient has moved significantly
+                // or if we have no path or path is nearly complete
+                bool needsNewPath = currentPath.empty() || 
+                                   pathIndex >= static_cast<int>(currentPath.size()) - 2;
+                
+                // Check if recipient moved from our target
+                if (!needsNewPath && !currentPath.empty()) {
+                    Position currentTarget = currentPath[currentPath.size() - 1];
+                    if (currentTarget != recipientPos) {
+                        needsNewPath = true;
+                        LOG_CHARACTER("[SUPPLIER " << teamToString(team) << "] Recipient moved! Recalculating path\n");
+                    }
+                }
+                
+                if (needsNewPath) {
+                    LOG_CHARACTER("[SUPPLIER " << teamToString(team) << "] Moving towards recipient at (" 
+                             << recipientPos.x << "," << recipientPos.y << ")"
+                             << " | Recalculating path\n");
+                    travelToRecipient(map);
+                } else {
+                    LOG_CHARACTER("[SUPPLIER " << teamToString(team) << "] Following existing path to recipient"
+                             << " | Path size: " << currentPath.size() << " | PathIndex: " << pathIndex << "\n");
+                }
             }
         }
     }

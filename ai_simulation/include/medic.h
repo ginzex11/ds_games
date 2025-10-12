@@ -30,6 +30,7 @@ public:
     
     bool hasMedicine() const { return medicineSupplies > 0; }
     void collectMedicine() { medicineSupplies++; }
+    Character* getCurrentPatient() const { return currentPatient; }  // For commander to check assignment
 };
 
 #endif // MEDIC_H

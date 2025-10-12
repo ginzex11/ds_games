@@ -65,10 +65,31 @@ void Medic::update(const Map& map, const std::vector<Character*>& allCharacters,
                 travelToWarehouse(map);
             } else {
                 // Have medicine or returning, move towards patient
-                LOG_CHARACTER("[MEDIC " << teamToString(team) << "] Moving towards patient at (" 
-                         << currentPatient->getPosition().x << "," << currentPatient->getPosition().y << ")"
-                         << " | Path size: " << currentPath.size() << " | PathIndex: " << pathIndex << "\n");
-                travelToPatient(map);
+                Position patientPos = currentPatient->getPosition();
+                
+                // Update path if patient has moved significantly (retreating warriors move!)
+                // or if we have no path or path is nearly complete
+                bool needsNewPath = currentPath.empty() || 
+                                   pathIndex >= static_cast<int>(currentPath.size()) - 2;
+                
+                // Check if patient moved from our target (happens during retreat)
+                if (!needsNewPath && !currentPath.empty()) {
+                    Position currentTarget = currentPath[currentPath.size() - 1];
+                    if (currentTarget != patientPos) {
+                        needsNewPath = true;
+                        LOG_CHARACTER("[MEDIC " << teamToString(team) << "] Patient moved! Recalculating path\n");
+                    }
+                }
+                
+                if (needsNewPath) {
+                    LOG_CHARACTER("[MEDIC " << teamToString(team) << "] Moving towards patient at (" 
+                             << patientPos.x << "," << patientPos.y << ")"
+                             << " | Recalculating path\n");
+                    travelToPatient(map);
+                } else {
+                    LOG_CHARACTER("[MEDIC " << teamToString(team) << "] Following existing path to patient"
+                             << " | Path size: " << currentPath.size() << " | PathIndex: " << pathIndex << "\n");
+                }
             }
         }
     }
