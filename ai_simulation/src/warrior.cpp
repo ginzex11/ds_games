@@ -285,7 +285,16 @@ void Warrior::executeMoveOrder(const Map& map, const std::vector<Character*>& al
         }
         auto safetyMap = AI::generateSafetyMap(enemyPos, map);
         
-        currentPath = AI::findPath(position, currentOrder.targetPosition, map, &safetyMap, 0.5f);
+        // Use lower safety weight (0.1f) for MOVE orders to allow long-distance travel
+        // while still preferring safer routes when available
+        currentPath = AI::findPath(position, currentOrder.targetPosition, map, &safetyMap, 0.1f);
+        
+        // Fallback: If no path found with safety map, try without it
+        if (currentPath.empty()) {
+            LOG_CHARACTER("[WARRIOR " << teamToString(team) << "] No safe path found, trying direct path\n");
+            currentPath = AI::findPath(position, currentOrder.targetPosition, map);
+        }
+        
         pathIndex = 0;
         
         if (currentPath.empty()) {

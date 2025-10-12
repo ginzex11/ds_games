@@ -141,7 +141,8 @@ void Medic::travelToWarehouse(const Map& map, const std::vector<std::vector<floa
     if (currentPath.empty() || pathIndex >= static_cast<int>(currentPath.size())) {
         LOG_CHARACTER("[MEDIC " << teamToString(team) << "] Calculating path to warehouse at (" 
                  << warehouse.x << "," << warehouse.y << ") using safety map\n");
-        currentPath = AI::findPath(position, warehouse, map, &safetyMap, 0.5f);
+        // Use lower safety weight for support units to ensure they can reach warehouses
+        currentPath = AI::findPath(position, warehouse, map, &safetyMap, 0.2f);
         pathIndex = 0;
         
         if (currentPath.empty()) {
@@ -159,7 +160,15 @@ void Medic::travelToPatient(const Map& map, const std::vector<std::vector<float>
     Position patientPos = currentPatient->getPosition();
     LOG_CHARACTER("[MEDIC " << teamToString(team) << "] Calculating path to patient at (" 
              << patientPos.x << "," << patientPos.y << ") using safety map\n");
-    currentPath = AI::findPath(position, patientPos, map, &safetyMap, 0.5f);
+    // Use lower safety weight for support units to ensure they can reach targets
+    currentPath = AI::findPath(position, patientPos, map, &safetyMap, 0.1f);
+    
+    // Fallback: If no safe path, try direct path (medics must reach patients!)
+    if (currentPath.empty()) {
+        LOG_CHARACTER("[MEDIC " << teamToString(team) << "] No safe path, trying direct route\n");
+        currentPath = AI::findPath(position, patientPos, map);
+    }
+    
     pathIndex = 0;
 }
 
