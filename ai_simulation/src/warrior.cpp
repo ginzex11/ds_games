@@ -49,10 +49,10 @@ void Warrior::update(const Map& map, const std::vector<Character*>& allCharacter
     if (needsHealing || needsAmmo) {
         LOG_CHARACTER("[WARRIOR " << teamToString(team) << "] Low on resources, defensive mode\n");
         
-        // Only shoot if enemy is very close (defensive only)
+        // Still shoot at ANY visible enemy (defensive mode doesn't mean passive!)
         Character* visibleEnemy = findNearestEnemy(allCharacters);
-        if (visibleEnemy && position.euclideanDistance(visibleEnemy->getPosition()) <= 3) {
-            LOG_CHARACTER("[WARRIOR " << teamToString(team) << "] Defensive shot at close enemy\n");
+        if (visibleEnemy) {
+            LOG_CHARACTER("[WARRIOR " << teamToString(team) << "] Defensive shot at enemy\n");
             tryShootEnemy(visibleEnemy, map);
         }
         
@@ -60,12 +60,13 @@ void Warrior::update(const Map& map, const std::vector<Character*>& allCharacter
         if (currentOrder.type == OrderType::DEFEND) {
             executeDefendOrder(map, allCharacters);
             moveAlongPath(allCharacters);
-            return;  // Don't do anything aggressive
+            return;  // Don't move aggressively when defending
         }
         
-        // No defend order but need resources - stay still and wait for help
-        LOG_CHARACTER("[WARRIOR " << teamToString(team) << "] Waiting for medic/supplier\n");
-        return;
+        // No defend order but need resources - stay still but KEEP SHOOTING
+        // Don't move to avoid danger, but defend position
+        LOG_CHARACTER("[WARRIOR " << teamToString(team) << "] Holding position, needs support\n");
+        // Continue to check for orders and shoot, but don't move aggressively
     }
     
     // Healthy and supplied - normal combat behavior

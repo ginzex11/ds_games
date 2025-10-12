@@ -301,22 +301,31 @@ void Simulation::renderCharacter(Character* character) {
         int ammo = warrior->getAmmo();
         std::string ammoText = std::to_string(ammo) + "/50";
         
-        // Draw ammo in white with small text
-        drawText(screenX + 2, textYPos, ammoText.c_str(), 1.0f, 1.0f, 1.0f);
+        // Draw dark background for better text visibility
+        drawRectangle(screenX + 1, textYPos - 2, 22, 10, 0.0f, 0.0f, 0.0f);
+        
+        // Draw ammo in bright cyan (excellent visibility)
+        drawText(screenX + 2, textYPos, ammoText.c_str(), 0.0f, 1.0f, 1.0f);
     } else if (character->getType() == CharacterType::MEDIC) {
         Medic* medic = static_cast<Medic*>(character);
         int medicine = medic->getMedicineSupplies();
         std::string medText = "M:" + std::to_string(medicine);
         
-        // Draw medicine in light green
-        drawText(screenX + 2, textYPos, medText.c_str(), 0.5f, 1.0f, 0.5f);
+        // Draw dark background
+        drawRectangle(screenX + 1, textYPos - 2, 18, 10, 0.0f, 0.0f, 0.0f);
+        
+        // Draw medicine in bright green
+        drawText(screenX + 2, textYPos, medText.c_str(), 0.0f, 1.0f, 0.0f);
     } else if (character->getType() == CharacterType::SUPPLIER) {
         Supplier* supplier = static_cast<Supplier*>(character);
         int supplies = supplier->getAmmoSupplies();
         std::string supText = "A:" + std::to_string(supplies);
         
-        // Draw ammo supplies in yellow
-        drawText(screenX + 2, textYPos, supText.c_str(), 1.0f, 1.0f, 0.5f);
+        // Draw dark background
+        drawRectangle(screenX + 1, textYPos - 2, 18, 10, 0.0f, 0.0f, 0.0f);
+        
+        // Draw ammo supplies in bright yellow
+        drawText(screenX + 2, textYPos, supText.c_str(), 1.0f, 1.0f, 0.0f);
     }
 }
 
