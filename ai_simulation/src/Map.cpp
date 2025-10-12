@@ -101,6 +101,30 @@ void Map::placeWarehouses() {
     clearAndMark(orangeAmmoWarehouse, WarehouseType::AMMO);
     clearAndMark(orangeMedicineWarehouse, WarehouseType::MEDICINE);
     
+    // CRITICAL: Clear wider area around warehouses to ensure accessibility
+    // Clear 5x5 area around each warehouse instead of just 3x3
+    auto clearWideArea = [this](Position pos) {
+        for (int dy = -2; dy <= 2; ++dy) {
+            for (int dx = -2; dx <= 2; ++dx) {
+                Position clearPos(pos.x + dx, pos.y + dy);
+                if (isValidPosition(clearPos)) {
+                    grid[clearPos.y][clearPos.x] = Cell(CellType::EMPTY);
+                }
+            }
+        }
+    };
+    
+    clearWideArea(blueAmmoWarehouse);
+    clearWideArea(blueMedicineWarehouse);
+    clearWideArea(orangeAmmoWarehouse);
+    clearWideArea(orangeMedicineWarehouse);
+    
+    // Re-mark warehouses after clearing (they might have been cleared)
+    grid[blueAmmoWarehouse.y][blueAmmoWarehouse.x] = Cell(CellType::WAREHOUSE, WarehouseType::AMMO);
+    grid[blueMedicineWarehouse.y][blueMedicineWarehouse.x] = Cell(CellType::WAREHOUSE, WarehouseType::MEDICINE);
+    grid[orangeAmmoWarehouse.y][orangeAmmoWarehouse.x] = Cell(CellType::WAREHOUSE, WarehouseType::AMMO);
+    grid[orangeMedicineWarehouse.y][orangeMedicineWarehouse.x] = Cell(CellType::WAREHOUSE, WarehouseType::MEDICINE);
+    
     // CRITICAL: Clear spawn areas for all units to prevent blocking
     // Blue team spawn area (x=5-7, y=11-19)
     for (int y = 11; y <= 19; ++y) {

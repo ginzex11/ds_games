@@ -111,15 +111,32 @@ void Simulation::updateAllCharacters() {
  * @brief Check if game is over
  */
 void Simulation::checkVictoryConditions() {
-    int blueAlive = countAliveCharacters(Team::BLUE);
-    int orangeAlive = countAliveCharacters(Team::ORANGE);
+    // Victory is determined by warriors only - support units can't win alone
+    int blueWarriors = 0;
+    int orangeWarriors = 0;
     
-    if (blueAlive == 0) {
+    for (Character* c : allCharacters) {
+        if (c->isAlive() && c->getType() == CharacterType::WARRIOR) {
+            if (c->getTeam() == Team::BLUE) {
+                blueWarriors++;
+            } else {
+                orangeWarriors++;
+            }
+        }
+    }
+    
+    if (blueWarriors == 0 && orangeWarriors > 0) {
         gameOver = true;
         winner = Team::ORANGE;
-    } else if (orangeAlive == 0) {
+        LOG_CONTROL("=== GAME OVER: Orange team wins! ===\n");
+    } else if (orangeWarriors == 0 && blueWarriors > 0) {
         gameOver = true;
         winner = Team::BLUE;
+        LOG_CONTROL("=== GAME OVER: Blue team wins! ===\n");
+    } else if (blueWarriors == 0 && orangeWarriors == 0) {
+        gameOver = true;
+        winner = Team::BLUE;  // Draw defaults to Blue
+        LOG_CONTROL("=== GAME OVER: Draw! All warriors eliminated. ===\n");
     }
 }
 
