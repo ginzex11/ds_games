@@ -51,7 +51,7 @@ constexpr int SHOOT_RANGE = 8;
 constexpr int GRENADE_RANGE = 6;
 constexpr int VISIBILITY_RANGE = 10;
 constexpr int LOW_HEALTH_THRESHOLD = 50;  // Increased from 25 - request healing at 50% health
-constexpr int LOW_AMMO_THRESHOLD = 10;    // Increased from 5 - request ammo earlier
+constexpr int LOW_AMMO_THRESHOLD = 25;    // Increased from 10 - request ammo at 50% ammo (25/50)
 constexpr int WAREHOUSE_RESUPPLY_AMOUNT = 20;
 constexpr int MEDICINE_HEAL_AMOUNT = 100;
 
