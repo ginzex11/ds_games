@@ -7,7 +7,7 @@
  */
 Simulation::Simulation()
     : currentTurn(0), gameOver(false), winner(Team::BLUE),
-      paused(false), turnDelay(0.5f), timeSinceLastTurn(0.0f) {
+      paused(false), turnDelay(0.5f), timeSinceLastTurn(0.0f), showFogOfWar(false) {
     initializeTeams();
 }
 
@@ -161,6 +161,18 @@ void Simulation::reset() {
 }
 
 /**
+ * @brief Check if a position is occupied by another character
+ */
+bool Simulation::isPositionOccupied(const Position& pos, const Character* excludeChar) const {
+    for (const Character* c : allCharacters) {
+        if (c->isAlive() && c != excludeChar && c->getPosition() == pos) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
  * @brief Render the entire simulation
  */
 void Simulation::render() {
@@ -169,12 +181,23 @@ void Simulation::render() {
     
     renderGrid();
     
+    // Render order lines (under characters)
+    renderOrderLines();
+    
     // Render all characters
     for (Character* c : allCharacters) {
         if (c->isAlive()) {
             renderCharacter(c);
         }
     }
+    
+    // Render fog of war if enabled
+    if (showFogOfWar) {
+        renderFogOfWar();
+    }
+    
+    // Render shooting effects (over characters)
+    renderEffects();
     
     renderUI();
     
@@ -202,26 +225,31 @@ void Simulation::renderCell(int x, int y) {
     const Cell& cell = gameMap.getCell(x, y);
     
     // Choose color based on cell type
-    float r = 0.9f, g = 0.9f, b = 0.9f;  // Default: light gray (empty)
+    float r = 0.7f, g = 0.9f, b = 0.7f;  // Default: light green (empty grass)
     
     switch (cell.type) {
         case CellType::ROCK:
-            r = 0.3f; g = 0.3f; b = 0.3f;  // Dark gray
+            r = 0.5f; g = 0.5f; b = 0.5f;  // Gray stones
+            drawSquare(screenX, screenY, CELL_SIZE - 1, r, g, b);
             break;
         case CellType::TREE:
-            r = 0.2f; g = 0.6f; b = 0.2f;  // Green
-            break;
+            // Light green grass background
+            drawSquare(screenX, screenY, CELL_SIZE - 1, 0.7f, 0.9f, 0.7f);
+            // Dark green triangle for tree
+            drawTriangle(screenX + CELL_SIZE / 2, screenY + CELL_SIZE / 2, CELL_SIZE - 4, 0.1f, 0.5f, 0.1f);
+            return;  // Skip the default square drawing
         case CellType::WATER:
-            r = 0.3f; g = 0.5f; b = 0.8f;  // Blue
+            r = 0.6f; g = 0.8f; b = 1.0f;  // Light blue water
+            drawSquare(screenX, screenY, CELL_SIZE - 1, r, g, b);
             break;
         case CellType::WAREHOUSE:
             r = 0.9f; g = 0.9f; b = 0.3f;  // Yellow
+            drawSquare(screenX, screenY, CELL_SIZE - 1, r, g, b);
             break;
         default:
+            drawSquare(screenX, screenY, CELL_SIZE - 1, r, g, b);
             break;
     }
-    
-    drawSquare(screenX, screenY, CELL_SIZE - 1, r, g, b);
 }
 
 /**
@@ -269,24 +297,55 @@ void Simulation::renderCharacter(Character* character) {
  * @brief Render UI overlay
  */
 void Simulation::renderUI() {
-    // Draw info panel at top
-    std::ostringstream oss;
-    oss << "Turn: " << currentTurn 
-        << " | Blue: " << countAliveCharacters(Team::BLUE)
-        << " | Orange: " << countAliveCharacters(Team::ORANGE);
+    // Draw dark background panel at top for info text (taller for more info)
+    drawRectangle(0.0f, WINDOW_HEIGHT - 60.0f, static_cast<float>(WINDOW_WIDTH), 60.0f, 0.1f, 0.1f, 0.15f);
+    
+    // Count units by type for each team
+    int blueWarriors = 0, blueOther = 0;
+    int orangeWarriors = 0, orangeOther = 0;
+    for (Character* c : allCharacters) {
+        if (!c->isAlive()) continue;
+        if (c->getTeam() == Team::BLUE) {
+            if (c->getType() == CharacterType::WARRIOR) blueWarriors++;
+            else if (c->getType() != CharacterType::COMMANDER) blueOther++;
+        } else {
+            if (c->getType() == CharacterType::WARRIOR) orangeWarriors++;
+            else if (c->getType() != CharacterType::COMMANDER) orangeOther++;
+        }
+    }
+    
+    // Draw info panel - Line 1: Turn and unit counts
+    std::ostringstream oss1;
+    oss1 << "Turn: " << currentTurn 
+        << " | Blue: " << blueWarriors << "W + " << blueOther << "S"
+        << " | Orange: " << orangeWarriors << "W + " << orangeOther << "S";
     
     if (paused) {
-        oss << " | PAUSED";
+        oss1 << " | PAUSED";
     }
     
     if (gameOver) {
-        oss << " | GAME OVER - " << teamToString(winner) << " WINS!";
+        oss1 << " | GAME OVER - " << teamToString(winner) << " WINS!";
     }
     
-    drawText(10, WINDOW_HEIGHT - 20, oss.str());
+    drawText(10, WINDOW_HEIGHT - 15, oss1.str(), 1.0f, 1.0f, 1.0f);  // White text
     
-    // Draw controls with high visibility
-    drawText(10, 20, "Controls: SPACE=Pause | R=Reset | +/- Speed", 1.0f, 1.0f, 0.0f);  // Bright yellow
+    // Line 2: Legend for order lines
+    drawText(10, WINDOW_HEIGHT - 35, "Order Lines: Red=Attack | Cyan=Defend | Magenta=Move | Green=Heal | Orange=Resupply", 0.7f, 0.7f, 0.7f);
+    
+    // Line 3: Shooting legend
+    drawText(10, WINDOW_HEIGHT - 50, "W=Warrior M=Medic P=Supplier C=Commander | Gun shots show as colored lines, Grenades as red arcs", 0.6f, 0.6f, 0.6f);
+    
+    // Draw dark background panel at bottom for controls
+    drawRectangle(0.0f, 0.0f, static_cast<float>(WINDOW_WIDTH), 35.0f, 0.1f, 0.1f, 0.15f);
+    
+    // Draw controls with cyan text on dark background (professional look)
+    std::ostringstream controls;
+    controls << "Controls: SPACE=Pause | R=Reset | +/- Speed | F=Fog of War";
+    if (showFogOfWar) {
+        controls << " [ON]";
+    }
+    drawText(10, 15, controls.str(), 0.3f, 1.0f, 1.0f);  // Cyan
 }
 
 /**
@@ -299,6 +358,31 @@ void Simulation::drawSquare(float x, float y, float size, float r, float g, floa
     glVertex2f(x + size, y);
     glVertex2f(x + size, y + size);
     glVertex2f(x, y + size);
+    glEnd();
+}
+
+/**
+ * @brief Draw a filled triangle (centered at x, y)
+ */
+void Simulation::drawTriangle(float x, float y, float size, float r, float g, float b) {
+    glColor3f(r, g, b);
+    glBegin(GL_TRIANGLES);
+    glVertex2f(x, y - size / 2);           // Top vertex
+    glVertex2f(x - size / 2, y + size / 2); // Bottom left
+    glVertex2f(x + size / 2, y + size / 2); // Bottom right
+    glEnd();
+}
+
+/**
+ * @brief Draw a filled rectangle
+ */
+void Simulation::drawRectangle(float x, float y, float width, float height, float r, float g, float b) {
+    glColor3f(r, g, b);
+    glBegin(GL_QUADS);
+    glVertex2f(x, y);
+    glVertex2f(x + width, y);
+    glVertex2f(x + width, y + height);
+    glVertex2f(x, y + height);
     glEnd();
 }
 
@@ -320,4 +404,198 @@ void Simulation::drawCharInSquare(float x, float y, char c, float r, float g, fl
     glColor3f(r, g, b);
     glRasterPos2f(x - 4, y + 4);
     glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, c);
+}
+
+/**
+ * @brief Draw a line between two points
+ */
+void Simulation::drawLine(float x1, float y1, float x2, float y2, float r, float g, float b, float lineWidth) {
+    glColor3f(r, g, b);
+    glLineWidth(lineWidth);
+    glBegin(GL_LINES);
+    glVertex2f(x1, y1);
+    glVertex2f(x2, y2);
+    glEnd();
+    glLineWidth(1.0f);  // Reset to default
+}
+
+/**
+ * @brief Render visual effects (shooting lines, explosions)
+ */
+void Simulation::renderEffects() {
+    // Update and render shoot effects
+    auto it = shootEffects.begin();
+    while (it != shootEffects.end()) {
+        // Convert grid positions to screen coordinates (center of cells)
+        float x1 = it->from.x * CELL_SIZE + CELL_SIZE / 2;
+        float y1 = it->from.y * CELL_SIZE + CELL_SIZE / 2;
+        float x2 = it->to.x * CELL_SIZE + CELL_SIZE / 2;
+        float y2 = it->to.y * CELL_SIZE + CELL_SIZE / 2;
+        
+        if (it->isGrenade) {
+            // Grenade - draw arc (approximated with line for now) in red
+            drawLine(x1, y1, x2, y2, 1.0f, 0.3f, 0.0f, 3.0f);
+            
+            // Draw explosion circle at target
+            float explosionSize = 8.0f;
+            glColor3f(1.0f, 0.5f, 0.0f);  // Orange explosion
+            glBegin(GL_TRIANGLE_FAN);
+            glVertex2f(x2, y2);
+            for (int i = 0; i <= 16; ++i) {
+                float angle = (float)i / 16.0f * 2.0f * 3.14159f;
+                glVertex2f(x2 + cos(angle) * explosionSize, y2 + sin(angle) * explosionSize);
+            }
+            glEnd();
+        } else {
+            // Gun shot - draw line in team color
+            float r = (it->team == Team::BLUE) ? 0.3f : 1.0f;
+            float g = (it->team == Team::BLUE) ? 0.5f : 0.6f;
+            float b = (it->team == Team::BLUE) ? 1.0f : 0.2f;
+            drawLine(x1, y1, x2, y2, r, g, b, 2.0f);
+            
+            // Draw impact marker at target
+            float impactSize = 4.0f;
+            glColor3f(1.0f, 1.0f, 0.0f);  // Yellow impact
+            glBegin(GL_TRIANGLE_FAN);
+            glVertex2f(x2, y2);
+            for (int i = 0; i <= 8; ++i) {
+                float angle = (float)i / 8.0f * 2.0f * 3.14159f;
+                glVertex2f(x2 + cos(angle) * impactSize, y2 + sin(angle) * impactSize);
+            }
+            glEnd();
+        }
+        
+        // Decrement turns remaining
+        it->turnsRemaining--;
+        if (it->turnsRemaining <= 0) {
+            it = shootEffects.erase(it);
+        } else {
+            ++it;
+        }
+    }
+}
+
+/**
+ * @brief Render order lines from commanders to warriors
+ */
+void Simulation::renderOrderLines() {
+    for (Character* c : allCharacters) {
+        if (!c->isAlive() || c->getType() == CharacterType::COMMANDER) {
+            continue;
+        }
+        
+        // Get character's current order
+        Order order = c->getCurrentOrder();
+        if (order.type == OrderType::NONE) {
+            continue;
+        }
+        
+        // Draw line from character to target
+        float x1 = c->getPosition().x * CELL_SIZE + CELL_SIZE / 2;
+        float y1 = c->getPosition().y * CELL_SIZE + CELL_SIZE / 2;
+        float x2 = order.targetPosition.x * CELL_SIZE + CELL_SIZE / 2;
+        float y2 = order.targetPosition.y * CELL_SIZE + CELL_SIZE / 2;
+        
+        // Color based on order type
+        float r = 1.0f, g = 1.0f, b = 1.0f;
+        switch (order.type) {
+            case OrderType::ATTACK:
+                r = 1.0f; g = 0.0f; b = 0.0f;  // Red for attack
+                break;
+            case OrderType::DEFEND:
+                r = 0.0f; g = 1.0f; b = 1.0f;  // Cyan for defend
+                break;
+            case OrderType::MOVE:
+                r = 1.0f; g = 0.0f; b = 1.0f;  // Magenta for move (better visibility)
+                break;
+            case OrderType::HEAL:
+                r = 0.0f; g = 1.0f; b = 0.0f;  // Green for heal
+                break;
+            case OrderType::RESUPPLY:
+                r = 1.0f; g = 0.5f; b = 0.0f;  // Orange for resupply
+                break;
+            default:
+                break;
+        }
+        
+        // Draw dotted line (draw short segments with gaps)
+        float dx = x2 - x1;
+        float dy = y2 - y1;
+        float length = sqrt(dx * dx + dy * dy);
+        float nx = dx / length;  // Normalized direction
+        float ny = dy / length;
+        
+        float segmentLength = 5.0f;
+        float gapLength = 3.0f;
+        float totalSegment = segmentLength + gapLength;
+        
+        for (float dist = 0; dist < length; dist += totalSegment) {
+            float startDist = dist;
+            float endDist = std::min(dist + segmentLength, length);
+            drawLine(x1 + nx * startDist, y1 + ny * startDist,
+                    x1 + nx * endDist, y1 + ny * endDist,
+                    r, g, b, 1.0f);
+        }
+    }
+}
+
+/**
+ * @brief Render fog of war - show what each team can see
+ */
+void Simulation::renderFogOfWar() {
+    // Create a semi-transparent overlay for unseen areas
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    
+    // Draw fog over entire map first
+    for (int y = 0; y < GRID_HEIGHT; ++y) {
+        for (int x = 0; x < GRID_WIDTH; ++x) {
+            Position pos(x, y);
+            bool blueCanSee = false;
+            bool orangeCanSee = false;
+            
+            // Check if any blue team member can see this position
+            for (Character* c : blueTeam) {
+                if (c->isAlive() && c->canSee(pos)) {
+                    blueCanSee = true;
+                    break;
+                }
+            }
+            
+            // Check if any orange team member can see this position
+            for (Character* c : orangeTeam) {
+                if (c->isAlive() && c->canSee(pos)) {
+                    orangeCanSee = true;
+                    break;
+                }
+            }
+            
+            float screenX = x * CELL_SIZE;
+            float screenY = y * CELL_SIZE;
+            
+            if (blueCanSee && orangeCanSee) {
+                // Both teams can see - highlight in purple
+                glColor4f(0.5f, 0.0f, 0.5f, 0.2f);  // Purple tint
+            } else if (blueCanSee) {
+                // Only blue team can see - blue tint
+                glColor4f(0.0f, 0.3f, 0.6f, 0.15f);
+            } else if (orangeCanSee) {
+                // Only orange team can see - orange tint
+                glColor4f(0.6f, 0.3f, 0.0f, 0.15f);
+            } else {
+                // Neither team can see - dark fog
+                glColor4f(0.0f, 0.0f, 0.0f, 0.5f);
+            }
+            
+            // Draw overlay
+            glBegin(GL_QUADS);
+            glVertex2f(screenX, screenY);
+            glVertex2f(screenX + CELL_SIZE, screenY);
+            glVertex2f(screenX + CELL_SIZE, screenY + CELL_SIZE);
+            glVertex2f(screenX, screenY + CELL_SIZE);
+            glEnd();
+        }
+    }
+    
+    glDisable(GL_BLEND);
 }

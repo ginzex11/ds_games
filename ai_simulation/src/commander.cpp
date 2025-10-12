@@ -45,7 +45,7 @@ void Commander::update(const Map& map, const std::vector<Character*>& allCharact
     relocateIfNeeded(map);
     
     // Move along current path
-    moveAlongPath();
+    moveAlongPath(allCharacters);
 }
 
 /**
@@ -95,7 +95,17 @@ void Commander::buildCombinedVisibilityMap(const std::vector<Character*>& teamMe
  * @brief Issue orders to team members
  */
 void Commander::issueOrders(const std::vector<Character*>& teamMembers, const Map& map) {
+    std::cout << "[COMMANDER " << teamToString(team) << "] Issuing orders to team...\n";
+    
     for (Character* member : teamMembers) {
+        // Only issue new orders if member doesn't have an active order
+        if (member->getCurrentOrder().type != OrderType::NONE) {
+            std::cout << "  - " << characterTypeToChar(member->getType()) 
+                     << " already has " << orderTypeToString(member->getCurrentOrder().type) 
+                     << " order, skipping\n";
+            continue;  // Skip this member - they're already busy
+        }
+        
         Order order;
         
         switch (member->getType()) {
@@ -113,7 +123,12 @@ void Commander::issueOrders(const std::vector<Character*>& teamMembers, const Ma
         }
         
         if (order.type != OrderType::NONE) {
+            std::cout << "  - Issuing " << orderTypeToString(order.type) << " order to " 
+                     << characterTypeToChar(member->getType()) << " at (" 
+                     << member->getPosition().x << "," << member->getPosition().y << ")\n";
             member->executeOrder(order, map);
+        } else {
+            std::cout << "  - No order for " << characterTypeToChar(member->getType()) << "\n";
         }
     }
 }
@@ -147,9 +162,23 @@ Order Commander::determineWarriorOrder(Character* warrior, const Map& map) {
         return Order(OrderType::ATTACK, nearestEnemy);
     }
     
-    // No enemies, patrol towards center
-    Position center(GRID_WIDTH / 2, GRID_HEIGHT / 2);
-    return Order(OrderType::MOVE, center);
+    // No enemies known - patrol aggressively towards enemy territory
+    Position patrolTarget;
+    if (team == Team::BLUE) {
+        // Blue team patrols towards right side (orange territory)
+        patrolTarget = Position(GRID_WIDTH * 3 / 4, GRID_HEIGHT / 2);
+    } else {
+        // Orange team patrols towards left side (blue territory)
+        patrolTarget = Position(GRID_WIDTH / 4, GRID_HEIGHT / 2);
+    }
+    
+    // Only give patrol order if warrior is not already near the patrol point
+    if (warrior->getPosition().euclideanDistance(patrolTarget) > 5) {
+        return Order(OrderType::MOVE, patrolTarget);
+    }
+    
+    // Already at patrol position, no order (will engage if enemies appear)
+    return Order();
 }
 
 /**
@@ -161,13 +190,16 @@ Order Commander::determineMedicOrder(Character* medic, const std::vector<Charact
         if (member->getType() == CharacterType::WARRIOR) {
             Warrior* w = dynamic_cast<Warrior*>(member);
             if (w && w->getNeedsHealing()) {
+                std::cout << "  [Commander] Assigning medic to heal " << teamToString(member->getTeam()) 
+                         << " warrior at (" << member->getPosition().x << "," << member->getPosition().y 
+                         << ") with HP:" << member->getHealth() << "\n";
                 return Order(OrderType::HEAL, member->getPosition(), member);
             }
         }
     }
     
-    // No one needs healing, stay near commander
-    return Order(OrderType::MOVE, position);
+    // No one needs healing, return no order (medic will stay idle/safe)
+    return Order();
 }
 
 /**
@@ -184,8 +216,8 @@ Order Commander::determineSupplierOrder(Character* supplier, const std::vector<C
         }
     }
     
-    // No one needs ammo, stay near commander
-    return Order(OrderType::MOVE, position);
+    // No one needs ammo, return no order (supplier will stay idle/safe)
+    return Order();
 }
 
 /**

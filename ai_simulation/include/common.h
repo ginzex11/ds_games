@@ -27,16 +27,16 @@ constexpr float CELL_SIZE = 30.0f;
 
 // Game balance constants
 constexpr int INITIAL_HEALTH = 100;
-constexpr int INITIAL_AMMO = 30;
+constexpr int INITIAL_AMMO = 50;           // Increased from 30 - more shots per warrior
 constexpr int INITIAL_GRENADES = 3;
-constexpr int WARRIOR_DAMAGE = 20;
+constexpr int WARRIOR_DAMAGE = 10;         // Reduced from 20 - combat takes longer
 constexpr int GRENADE_DAMAGE = 40;
 constexpr int GRENADE_RADIUS = 2;
 constexpr int SHOOT_RANGE = 8;
 constexpr int GRENADE_RANGE = 6;
 constexpr int VISIBILITY_RANGE = 10;
-constexpr int LOW_HEALTH_THRESHOLD = 25;
-constexpr int LOW_AMMO_THRESHOLD = 5;
+constexpr int LOW_HEALTH_THRESHOLD = 50;  // Increased from 25 - request healing at 50% health
+constexpr int LOW_AMMO_THRESHOLD = 10;    // Increased from 5 - request ammo earlier
 constexpr int WAREHOUSE_RESUPPLY_AMOUNT = 20;
 constexpr int MEDICINE_HEAL_AMOUNT = 100;
 
@@ -181,6 +181,18 @@ inline char characterTypeToChar(CharacterType type) {
         case CharacterType::MEDIC: return 'M';
         case CharacterType::SUPPLIER: return 'P';
         default: return '?';
+    }
+}
+
+inline std::string orderTypeToString(OrderType type) {
+    switch (type) {
+        case OrderType::NONE: return "NONE";
+        case OrderType::MOVE: return "MOVE";
+        case OrderType::ATTACK: return "ATTACK";
+        case OrderType::DEFEND: return "DEFEND";
+        case OrderType::HEAL: return "HEAL";
+        case OrderType::RESUPPLY: return "RESUPPLY";
+        default: return "Unknown";
     }
 }
 

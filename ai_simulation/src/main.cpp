@@ -39,24 +39,40 @@ void timerCallback(int value) {
 void keyboardCallback(unsigned char key, int x, int y) {
     if (!globalSimulation) return;
     
+    // Debug: print key code
+    std::cout << "Key pressed: " << (int)key << " ('" << key << "')\n";
+    
     switch (key) {
         case ' ':  // Space - toggle pause
+            std::cout << "Toggling pause\n";
             globalSimulation->togglePause();
             break;
         case 'r':  // R - reset
         case 'R':
+            std::cout << "Resetting simulation\n";
             globalSimulation->reset();
             break;
         case '+':  // Speed up
         case '=':
+            std::cout << "Speeding up\n";
             globalSimulation->speedUp();
             break;
         case '-':  // Slow down
         case '_':
+            std::cout << "Slowing down\n";
             globalSimulation->slowDown();
             break;
+        case 'f':  // F - toggle fog of war
+        case 'F':
+            std::cout << "Toggling fog of war\n";
+            globalSimulation->toggleFogOfWar();
+            break;
         case 27:   // ESC - exit
+            std::cout << "Exiting\n";
             exit(0);
+            break;
+        default:
+            std::cout << "Unhandled key\n";
             break;
     }
     

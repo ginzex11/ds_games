@@ -296,10 +296,10 @@ int main() {
     std::cout << "=================================================\n";
     
     if (testsFailed == 0) {
-        std::cout << "\n✓ All tests passed!\n\n";
+        std::cout << "\n All tests passed!\n\n";
         return 0;
     } else {
-        std::cout << "\n✗ Some tests failed.\n\n";
+        std::cout << "\n Some tests failed.\n\n";
         return 1;
     }
 }

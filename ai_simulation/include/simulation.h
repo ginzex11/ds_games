@@ -9,6 +9,22 @@
 #include "medic.h"
 #include "supplier.h"
 #include <GL/freeglut.h>
+#include <vector>
+#include <deque>
+
+/**
+ * @brief Visual effect for shooting
+ */
+struct ShootEffect {
+    Position from;
+    Position to;
+    bool isGrenade;
+    int turnsRemaining;
+    Team team;
+    
+    ShootEffect(Position f, Position t, bool grenade, Team tm) 
+        : from(f), to(t), isGrenade(grenade), turnsRemaining(2), team(tm) {}
+};
 
 /**
  * @brief Simulation class - manages game state and rendering
@@ -32,13 +48,23 @@ private:
     bool paused;
     float turnDelay;
     float timeSinceLastTurn;
+    bool showFogOfWar;  // Toggle for visibility visualization
+    
+    // Visual effects
+    std::deque<ShootEffect> shootEffects;
     
     // Rendering helpers
     void renderGrid();
     void renderCell(int x, int y);
     void renderCharacter(Character* character);
     void renderUI();
+    void renderEffects();
+    void renderOrderLines();
+    void renderFogOfWar();
     void drawSquare(float x, float y, float size, float r, float g, float b);
+    void drawTriangle(float x, float y, float size, float r, float g, float b);
+    void drawRectangle(float x, float y, float width, float height, float r, float g, float b);
+    void drawLine(float x1, float y1, float x2, float y2, float r, float g, float b, float lineWidth = 2.0f);
     void drawText(float x, float y, const std::string& text, float r = 1.0f, float g = 1.0f, float b = 1.0f);
     void drawCharInSquare(float x, float y, char c, float r = 1.0f, float g = 1.0f, float b = 1.0f);
     
@@ -48,6 +74,7 @@ private:
     void checkVictoryConditions();
     Team getAliveTeam();
     int countAliveCharacters(Team team);
+    bool isPositionOccupied(const Position& pos, const Character* excludeChar = nullptr) const;
     
 public:
     Simulation();
@@ -59,9 +86,15 @@ public:
     
     // Control functions
     void togglePause() { paused = !paused; }
+    void toggleFogOfWar() { showFogOfWar = !showFogOfWar; }
     void reset();
     void speedUp() { turnDelay = std::max(0.1f, turnDelay - 0.1f); }
     void slowDown() { turnDelay = std::min(2.0f, turnDelay + 0.1f); }
+    
+    // Visual effects
+    void addShootEffect(Position from, Position to, bool isGrenade, Team team) {
+        shootEffects.push_back(ShootEffect(from, to, isGrenade, team));
+    }
     
     // Getters
     bool isGameOver() const { return gameOver; }

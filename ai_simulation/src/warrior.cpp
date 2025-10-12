@@ -22,29 +22,97 @@ void Warrior::update(const Map& map, const std::vector<Character*>& allCharacter
     // Check resource status
     checkResources();
     
+    // Log status every update
+    static int lastLogTurn = -1;
+    if (currentTurn != lastLogTurn) {
+        std::cout << "[WARRIOR " << teamToString(team) << " at (" << position.x << "," << position.y 
+                 << ")] HP:" << health << "/" << INITIAL_HEALTH 
+                 << " | Ammo:" << ammo << "/" << INITIAL_AMMO
+                 << " | Order:" << orderTypeToString(currentOrder.type);
+        if (needsHealing) std::cout << " | NEEDS HEALING";
+        if (needsAmmo) std::cout << " | NEEDS AMMO";
+        std::cout << "\n";
+        lastLogTurn = currentTurn;
+    }
+    
+    // If critically low on resources, prioritize survival over combat
+    if (needsHealing || needsAmmo) {
+        std::cout << "[WARRIOR " << teamToString(team) << "] Low on resources, defensive mode\n";
+        
+        // Only shoot if enemy is very close (defensive only)
+        Character* visibleEnemy = findNearestEnemy(allCharacters);
+        if (visibleEnemy && position.euclideanDistance(visibleEnemy->getPosition()) <= 3) {
+            std::cout << "[WARRIOR " << teamToString(team) << "] Defensive shot at close enemy\n";
+            tryShootEnemy(visibleEnemy, map);
+        }
+        
+        // If we have a DEFEND order, execute it and stay put
+        if (currentOrder.type == OrderType::DEFEND) {
+            executeDefendOrder(map, allCharacters);
+            moveAlongPath(allCharacters);
+            return;  // Don't do anything aggressive
+        }
+        
+        // No defend order but need resources - stay still and wait for help
+        std::cout << "[WARRIOR " << teamToString(team) << "] Waiting for medic/supplier\n";
+        return;
+    }
+    
+    // Healthy and supplied - normal combat behavior
+    // Check for visible enemies
+    Character* visibleEnemy = findNearestEnemy(allCharacters);
+    
     // Execute current order based on type
     if (currentOrder.type == OrderType::ATTACK) {
         executeAttackOrder(map, allCharacters);
         
         // Try to shoot if enemy is visible
-        Character* enemy = findNearestEnemy(allCharacters);
-        if (enemy) {
-            tryShootEnemy(enemy, map);
+        if (visibleEnemy) {
+            tryShootEnemy(visibleEnemy, map);
+        }
+        
+        // Clear order if: 
+        // 1. No visible enemy AND (path empty OR we've been attacking for a while without seeing enemy)
+        // 2. The original target is dead/gone
+        if (!visibleEnemy) {
+            // If no path or path is nearly complete, clear the order
+            if (currentPath.empty() || currentPath.size() <= 2) {
+                currentOrder = Order();
+                currentPath.clear();  // Clear any remaining path
+                pathIndex = 0;
+            }
         }
     } else if (currentOrder.type == OrderType::DEFEND) {
         executeDefendOrder(map, allCharacters);
+        
+        // Shoot at enemies even while defending
+        if (visibleEnemy) {
+            tryShootEnemy(visibleEnemy, map);
+        }
+        
+        // Clear defend order if path complete
+        if (currentPath.empty()) {
+            currentOrder = Order();
+        }
     } else if (currentOrder.type == OrderType::MOVE) {
-        // Move order is already handled in executeOrder
-    } else if (currentOrder.type == OrderType::NONE && !enemySightings.empty()) {
-        // If no order, look for enemies to engage autonomously
-        Character* enemy = findNearestEnemy(allCharacters);
-        if (enemy) {
-            tryShootEnemy(enemy, map);
+        // If we see an enemy while moving, engage them immediately!
+        if (visibleEnemy && !enemySightings.empty()) {
+            // Clear move order and let commander issue attack order next turn
+            currentOrder = Order();
+            tryShootEnemy(visibleEnemy, map);
+        } else if (currentPath.empty()) {
+            // Move order complete
+            currentOrder = Order();
+        }
+    } else if (currentOrder.type == OrderType::NONE) {
+        // No orders - engage enemies autonomously if visible
+        if (visibleEnemy) {
+            tryShootEnemy(visibleEnemy, map);
         }
     }
     
     // Move along current path
-    moveAlongPath();
+    moveAlongPath(allCharacters);
 }
 
 /**

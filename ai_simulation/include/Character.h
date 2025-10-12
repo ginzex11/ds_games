@@ -24,6 +24,7 @@ protected:
     bool alive;
     std::vector<Position> currentPath;
     int pathIndex;
+    int blockedTurns;  // Count how many turns we've been blocked
     std::unordered_set<Position> visibleCells;
     std::vector<EnemySighting> enemySightings;
     Order currentOrder;
@@ -39,7 +40,7 @@ public:
     // Common functionality
     void updateVisibility(const Map& map);
     void scanForEnemies(const std::vector<Character*>& allCharacters, int currentTurn);
-    void moveAlongPath();
+    void moveAlongPath(const std::vector<Character*>& allCharacters);
     void takeDamage(int damage);
     
     // Getters

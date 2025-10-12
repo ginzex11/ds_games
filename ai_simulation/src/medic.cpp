@@ -6,7 +6,7 @@
  */
 Medic::Medic(Position pos, Team t)
     : Character(pos, t, CharacterType::MEDIC),
-      medicineSupplies(0), currentPatient(nullptr), returningFromWarehouse(false) {
+      medicineSupplies(3), currentPatient(nullptr), returningFromWarehouse(false) {
 }
 
 /**
@@ -21,29 +21,62 @@ void Medic::update(const Map& map, const std::vector<Character*>& allCharacters,
     
     // If carrying out heal order
     if (currentOrder.type == OrderType::HEAL && currentPatient) {
-        if (!currentPatient->isAlive()) {
-            // Patient died, clear order
+        std::cout << "[MEDIC " << teamToString(team) << "] Executing HEAL order for " 
+                 << teamToString(currentPatient->getTeam()) << " patient at (" 
+                 << currentPatient->getPosition().x << "," << currentPatient->getPosition().y << ")\n";
+        
+        // SAFETY CHECK: Never heal enemy team!
+        if (currentPatient->getTeam() != team) {
+            std::cout << "[MEDIC " << teamToString(team) << "] ERROR: Assigned to heal ENEMY! Clearing order.\n";
             currentPatient = nullptr;
             currentOrder = Order();
             returningFromWarehouse = false;
-        } else if (position == currentPatient->getPosition()) {
-            // Reached patient, heal them
-            healPatient();
-        } else if (!hasMedicine() && !returningFromWarehouse) {
-            // Need to get medicine first
-            travelToWarehouse(map);
-        } else if (returningFromWarehouse && hasMedicine()) {
-            // Have medicine, now go to patient
-            travelToPatient(map);
+            return;
+        }
+        
+        if (!currentPatient->isAlive()) {
+            // Patient died, clear order
+            std::cout << "[MEDIC " << teamToString(team) << "] Patient died, clearing order\n";
+            currentPatient = nullptr;
+            currentOrder = Order();
+            returningFromWarehouse = false;
+        } else {
+            // Check if adjacent to patient (within 1 cell)
+            float distance = position.manhattanDistance(currentPatient->getPosition());
+            std::cout << "[MEDIC " << teamToString(team) << "] Distance to patient: " << distance 
+                     << " | Has medicine: " << (hasMedicine() ? "Yes" : "No") 
+                     << " | Supplies: " << medicineSupplies << "\n";
+            
+            if (distance <= 1) {
+                // Adjacent or same cell - can heal
+                if (hasMedicine()) {
+                    std::cout << "[MEDIC " << teamToString(team) << "] Healing patient!\n";
+                    healPatient();
+                } else {
+                    std::cout << "[MEDIC " << teamToString(team) << "] No medicine, going to warehouse\n";
+                    travelToWarehouse(map);
+                }
+            } else if (!hasMedicine() && !returningFromWarehouse) {
+                // Need to get medicine first
+                std::cout << "[MEDIC " << teamToString(team) << "] Going to warehouse for supplies\n";
+                travelToWarehouse(map);
+            } else {
+                // Have medicine or returning, move towards patient
+                std::cout << "[MEDIC " << teamToString(team) << "] Moving towards patient at (" 
+                         << currentPatient->getPosition().x << "," << currentPatient->getPosition().y << ")"
+                         << " | Path size: " << currentPath.size() << " | PathIndex: " << pathIndex << "\n";
+                travelToPatient(map);
+            }
         }
     }
     
     // Move along path
-    moveAlongPath();
+    moveAlongPath(allCharacters);
     
     // Check if reached warehouse
     if (map.isWarehouse(position) && 
         map.getWarehouseType(position) == WarehouseType::MEDICINE) {
+        std::cout << "[MEDIC " << teamToString(team) << "] Reached warehouse, collecting medicine\n";
         collectMedicine();
         returningFromWarehouse = true;
     }
