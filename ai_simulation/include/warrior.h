@@ -20,6 +20,7 @@ private:
     bool needsAmmo;
     bool needsHealing;
     Position lastKnownEnemyPosition;
+    int lastLoggedTurn;  // Track when this warrior last logged to avoid spam
     
     void checkResources();
     bool tryShootEnemy(Character* enemy, const Map& map);

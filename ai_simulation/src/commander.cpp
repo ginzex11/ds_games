@@ -125,7 +125,8 @@ void Commander::issueOrders(const std::vector<Character*>& teamMembers, const Ma
         if (order.type != OrderType::NONE) {
             LOG_CHARACTER("  - Issuing " << orderTypeToString(order.type) << " order to " 
                      << characterTypeToChar(member->getType()) << " at (" 
-                     << member->getPosition().x << "," << member->getPosition().y << ")\n");
+                     << member->getPosition().x << "," << member->getPosition().y << ")"
+                     << " | Target: (" << order.targetPosition.x << "," << order.targetPosition.y << ")\n");
             member->executeOrder(order, map);
         } else {
             LOG_CHARACTER("  - No order for " << characterTypeToChar(member->getType()) << "\n");

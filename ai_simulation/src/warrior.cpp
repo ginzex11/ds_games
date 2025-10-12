@@ -6,7 +6,7 @@
 Warrior::Warrior(Position pos, Team t)
     : Character(pos, t, CharacterType::WARRIOR),
       ammo(INITIAL_AMMO), grenades(INITIAL_GRENADES),
-      needsAmmo(false), needsHealing(false) {
+      needsAmmo(false), needsHealing(false), lastLoggedTurn(-1) {
 }
 
 /**
@@ -22,14 +22,17 @@ void Warrior::update(const Map& map, const std::vector<Character*>& allCharacter
     // Check resource status
     checkResources();
     
-    // Log status every update
-    LOG_CHARACTER("[WARRIOR " << teamToString(team) << " at (" << position.x << "," << position.y 
-             << ")] HP:" << health << "/" << INITIAL_HEALTH 
-             << " | Ammo:" << ammo << "/" << INITIAL_AMMO
-             << " | Order:" << orderTypeToString(currentOrder.type));
-    if (needsHealing) LOG_CHARACTER(" | NEEDS HEALING");
-    if (needsAmmo) LOG_CHARACTER(" | NEEDS AMMO");
-    LOG_CHARACTER("\n");
+    // Log status once per turn (each warrior tracks its own last log turn)
+    if (currentTurn != lastLoggedTurn) {
+        LOG_CHARACTER("[WARRIOR " << teamToString(team) << " at (" << position.x << "," << position.y 
+                 << ")] HP:" << health << "/" << INITIAL_HEALTH 
+                 << " | Ammo:" << ammo << "/" << INITIAL_AMMO
+                 << " | Order:" << orderTypeToString(currentOrder.type));
+        if (needsHealing) LOG_CHARACTER(" | NEEDS HEALING");
+        if (needsAmmo) LOG_CHARACTER(" | NEEDS AMMO");
+        LOG_CHARACTER("\n");
+        lastLoggedTurn = currentTurn;
+    }
     
     // If critically low on resources, prioritize survival over combat
     if (needsHealing || needsAmmo) {
