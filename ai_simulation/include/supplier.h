@@ -18,8 +18,8 @@ private:
     Character* currentRecipient;
     bool returningFromWarehouse;
     
-    void travelToWarehouse(const Map& map);
-    void travelToRecipient(const Map& map);
+    void travelToWarehouse(const Map& map, const std::vector<std::vector<float>>& safetyMap);
+    void travelToRecipient(const Map& map, const std::vector<std::vector<float>>& safetyMap);
     void resupplyRecipient();
     
 public:

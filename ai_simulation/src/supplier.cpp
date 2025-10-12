@@ -19,6 +19,15 @@ void Supplier::update(const Map& map, const std::vector<Character*>& allCharacte
     updateVisibility(map);
     scanForEnemies(allCharacters, currentTurn);
     
+    // Generate safety map based on visible enemies
+    std::vector<Position> enemyPositions;
+    for (Character* c : allCharacters) {
+        if (c->isAlive() && c->getTeam() != team) {
+            enemyPositions.push_back(c->getPosition());
+        }
+    }
+    auto safetyMap = AI::generateSafetyMap(enemyPositions, map);
+    
     // If carrying out resupply order
     if (currentOrder.type == OrderType::RESUPPLY && currentRecipient) {
         LOG_CHARACTER("[SUPPLIER " << teamToString(team) << "] Executing RESUPPLY order for " 
@@ -57,12 +66,12 @@ void Supplier::update(const Map& map, const std::vector<Character*>& allCharacte
                     resupplyRecipient();
                 } else {
                     LOG_CHARACTER("[SUPPLIER " << teamToString(team) << "] No ammo, going to warehouse\n");
-                    travelToWarehouse(map);
+                    travelToWarehouse(map, safetyMap);
                 }
             } else if (!hasAmmo() && !returningFromWarehouse) {
                 // Need to get ammo first
                 LOG_CHARACTER("[SUPPLIER " << teamToString(team) << "] Going to warehouse for supplies\n");
-                travelToWarehouse(map);
+                travelToWarehouse(map, safetyMap);
             } else {
                 // Have ammo or returning, move towards recipient
                 Position recipientPos = currentRecipient->getPosition();
@@ -85,7 +94,7 @@ void Supplier::update(const Map& map, const std::vector<Character*>& allCharacte
                     LOG_CHARACTER("[SUPPLIER " << teamToString(team) << "] Moving towards recipient at (" 
                              << recipientPos.x << "," << recipientPos.y << ")"
                              << " | Recalculating path\n");
-                    travelToRecipient(map);
+                    travelToRecipient(map, safetyMap);
                 } else {
                     LOG_CHARACTER("[SUPPLIER " << teamToString(team) << "] Following existing path to recipient"
                              << " | Path size: " << currentPath.size() << " | PathIndex: " << pathIndex << "\n");
@@ -115,12 +124,7 @@ void Supplier::executeOrder(Order order, const Map& map) {
     if (order.type == OrderType::RESUPPLY) {
         currentRecipient = order.targetCharacter;
         returningFromWarehouse = false;
-        
-        if (!hasAmmo()) {
-            travelToWarehouse(map);
-        } else {
-            travelToRecipient(map);
-        }
+        // Path will be calculated in update() with safety map
     } else if (order.type == OrderType::MOVE) {
         currentPath = AI::findPath(position, order.targetPosition, map);
         pathIndex = 0;
@@ -128,16 +132,16 @@ void Supplier::executeOrder(Order order, const Map& map) {
 }
 
 /**
- * @brief Navigate to ammo warehouse
+ * @brief Navigate to ammo warehouse using safety map
  */
-void Supplier::travelToWarehouse(const Map& map) {
+void Supplier::travelToWarehouse(const Map& map, const std::vector<std::vector<float>>& safetyMap) {
     Position warehouse = map.getWarehouse(team, WarehouseType::AMMO);
     
     // Only recalculate if we don't have a path or it's been cleared
     if (currentPath.empty() || pathIndex >= static_cast<int>(currentPath.size())) {
         LOG_CHARACTER("[SUPPLIER " << teamToString(team) << "] Calculating path to warehouse at (" 
-                 << warehouse.x << "," << warehouse.y << ")\n");
-        currentPath = AI::findPath(position, warehouse, map);
+                 << warehouse.x << "," << warehouse.y << ") using safety map\n");
+        currentPath = AI::findPath(position, warehouse, map, &safetyMap, 0.5f);
         pathIndex = 0;
         
         if (currentPath.empty()) {
@@ -147,13 +151,13 @@ void Supplier::travelToWarehouse(const Map& map) {
 }
 
 /**
- * @brief Navigate to recipient
+ * @brief Navigate to recipient using safety map
  */
-void Supplier::travelToRecipient(const Map& map) {
+void Supplier::travelToRecipient(const Map& map, const std::vector<std::vector<float>>& safetyMap) {
     if (!currentRecipient) return;
     
     Position recipientPos = currentRecipient->getPosition();
-    currentPath = AI::findPath(position, recipientPos, map);
+    currentPath = AI::findPath(position, recipientPos, map, &safetyMap, 0.5f);
     pathIndex = 0;
 }
 

@@ -19,6 +19,15 @@ void Medic::update(const Map& map, const std::vector<Character*>& allCharacters,
     updateVisibility(map);
     scanForEnemies(allCharacters, currentTurn);
     
+    // Generate safety map based on visible enemies
+    std::vector<Position> enemyPositions;
+    for (Character* c : allCharacters) {
+        if (c->isAlive() && c->getTeam() != team) {
+            enemyPositions.push_back(c->getPosition());
+        }
+    }
+    auto safetyMap = AI::generateSafetyMap(enemyPositions, map);
+    
     // If carrying out heal order
     if (currentOrder.type == OrderType::HEAL && currentPatient) {
         LOG_CHARACTER("[MEDIC " << teamToString(team) << "] Executing HEAL order for " 
@@ -57,12 +66,12 @@ void Medic::update(const Map& map, const std::vector<Character*>& allCharacters,
                     healPatient();
                 } else {
                     LOG_CHARACTER("[MEDIC " << teamToString(team) << "] No medicine, going to warehouse\n");
-                    travelToWarehouse(map);
+                    travelToWarehouse(map, safetyMap);
                 }
             } else if (!hasMedicine() && !returningFromWarehouse) {
                 // Need to get medicine first
                 LOG_CHARACTER("[MEDIC " << teamToString(team) << "] Going to warehouse for supplies\n");
-                travelToWarehouse(map);
+                travelToWarehouse(map, safetyMap);
             } else {
                 // Have medicine or returning, move towards patient
                 Position patientPos = currentPatient->getPosition();
@@ -85,7 +94,7 @@ void Medic::update(const Map& map, const std::vector<Character*>& allCharacters,
                     LOG_CHARACTER("[MEDIC " << teamToString(team) << "] Moving towards patient at (" 
                              << patientPos.x << "," << patientPos.y << ")"
                              << " | Recalculating path\n");
-                    travelToPatient(map);
+                    travelToPatient(map, safetyMap);
                 } else {
                     LOG_CHARACTER("[MEDIC " << teamToString(team) << "] Following existing path to patient"
                              << " | Path size: " << currentPath.size() << " | PathIndex: " << pathIndex << "\n");
@@ -115,12 +124,7 @@ void Medic::executeOrder(Order order, const Map& map) {
     if (order.type == OrderType::HEAL) {
         currentPatient = order.targetCharacter;
         returningFromWarehouse = false;
-        
-        if (!hasMedicine()) {
-            travelToWarehouse(map);
-        } else {
-            travelToPatient(map);
-        }
+        // Path will be calculated in update() with safety map
     } else if (order.type == OrderType::MOVE) {
         currentPath = AI::findPath(position, order.targetPosition, map);
         pathIndex = 0;
@@ -128,16 +132,16 @@ void Medic::executeOrder(Order order, const Map& map) {
 }
 
 /**
- * @brief Navigate to medicine warehouse
+ * @brief Navigate to medicine warehouse using safety map
  */
-void Medic::travelToWarehouse(const Map& map) {
+void Medic::travelToWarehouse(const Map& map, const std::vector<std::vector<float>>& safetyMap) {
     Position warehouse = map.getWarehouse(team, WarehouseType::MEDICINE);
     
     // Only recalculate if we don't have a path or it's been cleared
     if (currentPath.empty() || pathIndex >= static_cast<int>(currentPath.size())) {
         LOG_CHARACTER("[MEDIC " << teamToString(team) << "] Calculating path to warehouse at (" 
-                 << warehouse.x << "," << warehouse.y << ")\n");
-        currentPath = AI::findPath(position, warehouse, map);
+                 << warehouse.x << "," << warehouse.y << ") using safety map\n");
+        currentPath = AI::findPath(position, warehouse, map, &safetyMap, 0.5f);
         pathIndex = 0;
         
         if (currentPath.empty()) {
@@ -147,13 +151,13 @@ void Medic::travelToWarehouse(const Map& map) {
 }
 
 /**
- * @brief Navigate to patient
+ * @brief Navigate to patient using safety map
  */
-void Medic::travelToPatient(const Map& map) {
+void Medic::travelToPatient(const Map& map, const std::vector<std::vector<float>>& safetyMap) {
     if (!currentPatient) return;
     
     Position patientPos = currentPatient->getPosition();
-    currentPath = AI::findPath(position, patientPos, map);
+    currentPath = AI::findPath(position, patientPos, map, &safetyMap, 0.5f);
     pathIndex = 0;
 }
 

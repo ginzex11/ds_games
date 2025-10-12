@@ -18,8 +18,8 @@ private:
     Character* currentPatient;
     bool returningFromWarehouse;
     
-    void travelToWarehouse(const Map& map);
-    void travelToPatient(const Map& map);
+    void travelToWarehouse(const Map& map, const std::vector<std::vector<float>>& safetyMap);
+    void travelToPatient(const Map& map, const std::vector<std::vector<float>>& safetyMap);
     void healPatient();
     
 public:

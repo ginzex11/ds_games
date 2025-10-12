@@ -106,10 +106,15 @@ void Warrior::update(const Map& map, const std::vector<Character*>& allCharacter
             currentOrder = Order();
         }
     } else if (currentOrder.type == OrderType::MOVE) {
-        // If path is empty or complete, clear the order so commander can issue a new one
+        // If path is empty, calculate it with safety map
         if (currentPath.empty()) {
-            LOG_CHARACTER("[WARRIOR " << teamToString(team) << "] MOVE order path empty, clearing order\n");
-            currentOrder = Order();
+            executeMoveOrder(map, allCharacters);
+            
+            // If path still empty after calculation, clear order
+            if (currentPath.empty()) {
+                LOG_CHARACTER("[WARRIOR " << teamToString(team) << "] MOVE order path empty after calculation, clearing order\n");
+                currentOrder = Order();
+            }
         } else if (visibleEnemy && !enemySightings.empty()) {
             // If we see an enemy while moving, engage them immediately!
             currentOrder = Order();
@@ -137,7 +142,7 @@ void Warrior::executeOrder(Order order, const Map& map) {
     
     switch (order.type) {
         case OrderType::MOVE:
-            executeMoveOrder(map);
+            // Path will be calculated in update() with safety map
             break;
         case OrderType::ATTACK:
             // Will be handled in update with allCharacters
@@ -264,13 +269,23 @@ void Warrior::executeDefendOrder(const Map& map, const std::vector<Character*>& 
 }
 
 /**
- * @brief Execute move order
+ * @brief Execute move order using safety map
  */
-void Warrior::executeMoveOrder(const Map& map) {
+void Warrior::executeMoveOrder(const Map& map, const std::vector<Character*>& allCharacters) {
     if (currentPath.empty()) {
         LOG_CHARACTER("[WARRIOR " << teamToString(team) << "] Calculating path for MOVE order to (" 
-                 << currentOrder.targetPosition.x << "," << currentOrder.targetPosition.y << ")\n");
-        currentPath = AI::findPath(position, currentOrder.targetPosition, map);
+                 << currentOrder.targetPosition.x << "," << currentOrder.targetPosition.y << ") using safety map\n");
+        
+        // Generate safety map to minimize risk
+        std::vector<Position> enemyPos;
+        for (Character* c : allCharacters) {
+            if (c->isAlive() && c->getTeam() != team) {
+                enemyPos.push_back(c->getPosition());
+            }
+        }
+        auto safetyMap = AI::generateSafetyMap(enemyPos, map);
+        
+        currentPath = AI::findPath(position, currentOrder.targetPosition, map, &safetyMap, 0.5f);
         pathIndex = 0;
         
         if (currentPath.empty()) {

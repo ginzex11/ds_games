@@ -29,7 +29,7 @@ private:
     bool tryThrowGrenade(const Position& target, const Map& map, std::vector<Character*>& allCharacters);
     void executeAttackOrder(const Map& map, const std::vector<Character*>& allCharacters);
     void executeDefendOrder(const Map& map, const std::vector<Character*>& allCharacters);
-    void executeMoveOrder(const Map& map);
+    void executeMoveOrder(const Map& map, const std::vector<Character*>& allCharacters);
     void evaluateRetreat(const std::vector<Character*>& allCharacters);  // Check if retreat needed
     void executeRetreat(const Map& map, const std::vector<Character*>& allCharacters);  // Perform retreat
     
