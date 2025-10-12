@@ -399,6 +399,57 @@ void Simulation::renderUI() {
         controls << " [ON]";
     }
     drawText(10, 15, controls.str(), 0.3f, 1.0f, 1.0f);  // Cyan
+    
+    // Draw large victory popup if game is over
+    if (gameOver) {
+        // Semi-transparent dark overlay
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        glColor4f(0.0f, 0.0f, 0.0f, 0.7f);  // 70% opacity black
+        glBegin(GL_QUADS);
+        glVertex2f(0, 0);
+        glVertex2f(WINDOW_WIDTH, 0);
+        glVertex2f(WINDOW_WIDTH, WINDOW_HEIGHT);
+        glVertex2f(0, WINDOW_HEIGHT);
+        glEnd();
+        glDisable(GL_BLEND);
+        
+        // Victory popup box (centered)
+        float boxWidth = 500.0f;
+        float boxHeight = 200.0f;
+        float boxX = (WINDOW_WIDTH - boxWidth) / 2.0f;
+        float boxY = (WINDOW_HEIGHT - boxHeight) / 2.0f;
+        
+        // Draw popup box background (team color)
+        if (winner == Team::BLUE) {
+            drawRectangle(boxX, boxY, boxWidth, boxHeight, 0.2f, 0.4f, 0.8f);  // Blue
+        } else {
+            drawRectangle(boxX, boxY, boxWidth, boxHeight, 0.9f, 0.5f, 0.2f);  // Orange
+        }
+        
+        // Draw border
+        glColor3f(1.0f, 1.0f, 1.0f);
+        glLineWidth(4.0f);
+        glBegin(GL_LINE_LOOP);
+        glVertex2f(boxX, boxY);
+        glVertex2f(boxX + boxWidth, boxY);
+        glVertex2f(boxX + boxWidth, boxY + boxHeight);
+        glVertex2f(boxX, boxY + boxHeight);
+        glEnd();
+        
+        // Draw "VICTORY!" text (large, centered)
+        std::string victoryText = "VICTORY!";
+        drawText(boxX + 150, boxY + boxHeight - 50, victoryText.c_str(), 1.0f, 1.0f, 1.0f);
+        
+        // Draw winner text
+        std::ostringstream winnerText;
+        winnerText << teamToString(winner) << " Team Wins!";
+        drawText(boxX + 130, boxY + boxHeight - 90, winnerText.str().c_str(), 1.0f, 1.0f, 1.0f);
+        
+        // Draw instruction to restart
+        drawText(boxX + 100, boxY + 60, "Press 'R' to restart simulation", 0.9f, 0.9f, 0.9f);
+        drawText(boxX + 140, boxY + 30, "or close the window", 0.7f, 0.7f, 0.7f);
+    }
 }
 
 /**
