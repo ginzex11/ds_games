@@ -49,6 +49,8 @@ private:
     float turnDelay;
     float timeSinceLastTurn;
     bool showFogOfWar;  // Toggle for visibility visualization
+    bool showVisionCones;  // Toggle for vision cone visualization
+    bool showWeaponRanges;  // Toggle for weapon range circles
     
     // Visual effects
     std::deque<ShootEffect> shootEffects;
@@ -61,6 +63,9 @@ private:
     void renderEffects();
     void renderOrderLines();
     void renderFogOfWar();
+    void renderVisionCones();
+    void renderWeaponRanges();
+    void drawCircle(float x, float y, float radius, float r, float g, float b, float alpha = 1.0f, bool filled = false);
     void drawSquare(float x, float y, float size, float r, float g, float b);
     void drawTriangle(float x, float y, float size, float r, float g, float b);
     void drawRectangle(float x, float y, float width, float height, float r, float g, float b);
@@ -87,6 +92,8 @@ public:
     // Control functions
     void togglePause() { paused = !paused; }
     void toggleFogOfWar() { showFogOfWar = !showFogOfWar; }
+    void toggleVisionCones() { showVisionCones = !showVisionCones; }
+    void toggleWeaponRanges() { showWeaponRanges = !showWeaponRanges; }
     void reset();
     void speedUp() { turnDelay = std::max(0.1f, turnDelay - 0.1f); }
     void slowDown() { turnDelay = std::min(2.0f, turnDelay + 0.1f); }

@@ -42,9 +42,9 @@ constexpr float CELL_SIZE = 30.0f;
 
 // Game balance constants
 constexpr int INITIAL_HEALTH = 100;
-constexpr int INITIAL_AMMO = 50;           // Increased from 30 - more shots per warrior
-constexpr int INITIAL_GRENADES = 3;
-constexpr int WARRIOR_DAMAGE = 10;         // Reduced from 20 - combat takes longer
+constexpr int INITIAL_AMMO = 15;           // Reduced from 50 - enough for 1.5 kills, forces resupply
+constexpr int INITIAL_GRENADES = 2;        // Reduced from 3 - grenades more precious
+constexpr int WARRIOR_DAMAGE = 10;         // 10 shots to kill
 constexpr int GRENADE_DAMAGE = 40;
 constexpr int GRENADE_RADIUS = 2;
 constexpr int SHOOT_RANGE = 8;
@@ -53,8 +53,8 @@ constexpr int VISIBILITY_RANGE = 10;
 constexpr int LOW_HEALTH_THRESHOLD = 50;       // Request healing at 50% health
 constexpr int RETREAT_HEALTH_THRESHOLD = 40;   // Start retreating at 40% health (with time to escape)
 constexpr int CRITICAL_HEALTH_THRESHOLD = 25;  // Critical danger zone at 25% health
-constexpr int LOW_AMMO_THRESHOLD = 25;         // Increased from 10 - request ammo at 50% ammo (25/50)
-constexpr int WAREHOUSE_RESUPPLY_AMOUNT = 20;
+constexpr int LOW_AMMO_THRESHOLD = 8;          // Reduced from 25 - request ammo at ~50% (8/15)
+constexpr int WAREHOUSE_RESUPPLY_AMOUNT = 12;  // Reduced from 20 - gives 12 bullets
 constexpr int MEDICINE_HEAL_AMOUNT = 100;
 
 // Enumerations
@@ -153,7 +153,7 @@ struct Cell {
         : type(t), warehouseType(wt) {}
     
     bool isPassable() const {
-        return type == CellType::EMPTY || type == CellType::TREE;
+        return type == CellType::EMPTY || type == CellType::TREE || type == CellType::WAREHOUSE;
     }
     
     bool blocksSight() const {

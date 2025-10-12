@@ -7,7 +7,8 @@
  */
 Simulation::Simulation()
     : currentTurn(0), gameOver(false), winner(Team::BLUE),
-      paused(false), turnDelay(0.5f), timeSinceLastTurn(0.0f), showFogOfWar(false) {
+      paused(false), turnDelay(0.5f), timeSinceLastTurn(0.0f), showFogOfWar(false),
+      showVisionCones(false), showWeaponRanges(false) {
     initializeTeams();
 }
 
@@ -211,6 +212,16 @@ void Simulation::render() {
     // Render fog of war if enabled
     if (showFogOfWar) {
         renderFogOfWar();
+    }
+    
+    // Render vision cones if enabled
+    if (showVisionCones) {
+        renderVisionCones();
+    }
+    
+    // Render weapon ranges if enabled
+    if (showWeaponRanges) {
+        renderWeaponRanges();
     }
     
     // Render shooting effects (over characters)
@@ -537,19 +548,39 @@ void Simulation::renderEffects() {
         float y2 = it->to.y * CELL_SIZE + CELL_SIZE / 2;
         
         if (it->isGrenade) {
-            // Grenade - draw arc (approximated with line for now) in red
-            drawLine(x1, y1, x2, y2, 1.0f, 0.3f, 0.0f, 3.0f);
+            // Grenade - draw arc (approximated with line for now) in red/orange
+            glLineWidth(4.0f);
+            glColor3f(1.0f, 0.0f, 0.0f);  // Bright red for grenade throw
+            glBegin(GL_LINES);
+            glVertex2f(x1, y1);
+            glVertex2f(x2, y2);
+            glEnd();
             
-            // Draw explosion circle at target
-            float explosionSize = 8.0f;
-            glColor3f(1.0f, 0.5f, 0.0f);  // Orange explosion
+            // Draw LARGE explosion circle at target with radius matching GRENADE_RADIUS
+            float explosionSize = GRENADE_RADIUS * CELL_SIZE;  // Match game radius (2 tiles)
+            
+            // Draw filled explosion
+            glColor4f(1.0f, 0.3f, 0.0f, 0.7f);  // Bright orange with alpha
             glBegin(GL_TRIANGLE_FAN);
             glVertex2f(x2, y2);
-            for (int i = 0; i <= 16; ++i) {
-                float angle = (float)i / 16.0f * 2.0f * 3.14159f;
+            for (int i = 0; i <= 32; ++i) {
+                float angle = (float)i / 32.0f * 2.0f * 3.14159f;
                 glVertex2f(x2 + cos(angle) * explosionSize, y2 + sin(angle) * explosionSize);
             }
             glEnd();
+            
+            // Draw explosion outline
+            glLineWidth(3.0f);
+            glColor3f(1.0f, 0.0f, 0.0f);  // Red outline
+            glBegin(GL_LINE_LOOP);
+            for (int i = 0; i < 32; ++i) {
+                float angle = (float)i / 32.0f * 2.0f * 3.14159f;
+                glVertex2f(x2 + cos(angle) * explosionSize, y2 + sin(angle) * explosionSize);
+            }
+            glEnd();
+            
+            // Draw "GRENADE!" text indicator
+            glColor3f(1.0f, 1.0f, 0.0f);  // Yellow text
         } else {
             // Gun shot - draw line in team color
             float r = (it->team == Team::BLUE) ? 0.3f : 1.0f;
@@ -702,4 +733,150 @@ void Simulation::renderFogOfWar() {
     }
     
     glDisable(GL_BLEND);
+}
+
+/**
+ * @brief Render vision cones for all characters
+ */
+void Simulation::renderVisionCones() {
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    
+    // Draw vision cones for all alive characters
+    for (Character* c : allCharacters) {
+        if (!c->isAlive()) continue;
+        
+        Position pos = c->getPosition();
+        float screenX = pos.x * CELL_SIZE + CELL_SIZE / 2;
+        float screenY = pos.y * CELL_SIZE + CELL_SIZE / 2;
+        
+        // Use SHOOT_RANGE as vision radius (8 tiles)
+        float radius = SHOOT_RANGE * CELL_SIZE;
+        
+        // Determine facing direction based on team default orientation
+        // Blue team (left side) faces right (east)
+        // Orange team (right side) faces left (west)
+        float facingAngle;
+        if (c->getTeam() == Team::BLUE) {
+            facingAngle = 0.0f;  // Facing right (0 degrees = east)
+        } else {
+            facingAngle = 3.14159f;  // Facing left (180 degrees = west)
+        }
+        
+        // Draw cone with 120-degree field of view
+        float coneArc = 2.0944f;  // 120 degrees in radians
+        float startAngle = facingAngle - coneArc / 2;
+        float endAngle = facingAngle + coneArc / 2;
+        
+        // Team colors with transparency
+        if (c->getTeam() == Team::BLUE) {
+            glColor4f(0.0f, 0.5f, 1.0f, 0.2f);  // Blue
+        } else {
+            glColor4f(1.0f, 0.5f, 0.0f, 0.2f);  // Orange
+        }
+        
+        // Draw cone as triangle fan
+        int segments = 30;
+        glBegin(GL_TRIANGLE_FAN);
+        glVertex2f(screenX, screenY);  // Center point at character
+        
+        for (int i = 0; i <= segments; i++) {
+            float angle = startAngle + (endAngle - startAngle) * i / segments;
+            float dx = radius * cos(angle);
+            float dy = radius * sin(angle);
+            glVertex2f(screenX + dx, screenY + dy);
+        }
+        glEnd();
+        
+        // Draw cone outline
+        glLineWidth(1.5f);
+        if (c->getTeam() == Team::BLUE) {
+            glColor4f(0.0f, 0.5f, 1.0f, 0.5f);
+        } else {
+            glColor4f(1.0f, 0.5f, 0.0f, 0.5f);
+        }
+        
+        glBegin(GL_LINE_STRIP);
+        for (int i = 0; i <= segments; i++) {
+            float angle = startAngle + (endAngle - startAngle) * i / segments;
+            float dx = radius * cos(angle);
+            float dy = radius * sin(angle);
+            glVertex2f(screenX + dx, screenY + dy);
+        }
+        glEnd();
+        
+        // Draw lines from center to cone edges
+        glBegin(GL_LINES);
+        float dx1 = radius * cos(startAngle);
+        float dy1 = radius * sin(startAngle);
+        glVertex2f(screenX, screenY);
+        glVertex2f(screenX + dx1, screenY + dy1);
+        
+        float dx2 = radius * cos(endAngle);
+        float dy2 = radius * sin(endAngle);
+        glVertex2f(screenX, screenY);
+        glVertex2f(screenX + dx2, screenY + dy2);
+        glEnd();
+    }
+    
+    glDisable(GL_BLEND);
+}
+
+/**
+ * @brief Render weapon ranges for warriors
+ */
+void Simulation::renderWeaponRanges() {
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    
+    // Only draw ranges for warriors
+    for (Character* c : allCharacters) {
+        if (!c->isAlive() || c->getType() != CharacterType::WARRIOR) continue;
+        
+        Position pos = c->getPosition();
+        float screenX = pos.x * CELL_SIZE + CELL_SIZE / 2;
+        float screenY = pos.y * CELL_SIZE + CELL_SIZE / 2;
+        
+        float radius = SHOOT_RANGE * CELL_SIZE;
+        
+        // Draw range circle (outline only)
+        if (c->getTeam() == Team::BLUE) {
+            drawCircle(screenX, screenY, radius, 0.0f, 0.7f, 1.0f, 0.5f, false);  // Blue outline
+        } else {
+            drawCircle(screenX, screenY, radius, 1.0f, 0.6f, 0.0f, 0.5f, false);  // Orange outline
+        }
+    }
+    
+    glDisable(GL_BLEND);
+}
+
+/**
+ * @brief Draw a circle (filled or outline)
+ */
+void Simulation::drawCircle(float x, float y, float radius, float r, float g, float b, float alpha, bool filled) {
+    glColor4f(r, g, b, alpha);
+    
+    int segments = 50;
+    
+    if (filled) {
+        glBegin(GL_TRIANGLE_FAN);
+        glVertex2f(x, y);  // Center point
+        for (int i = 0; i <= segments; i++) {
+            float angle = 2.0f * 3.14159f * i / segments;
+            float dx = radius * cos(angle);
+            float dy = radius * sin(angle);
+            glVertex2f(x + dx, y + dy);
+        }
+        glEnd();
+    } else {
+        glLineWidth(2.0f);
+        glBegin(GL_LINE_LOOP);
+        for (int i = 0; i < segments; i++) {
+            float angle = 2.0f * 3.14159f * i / segments;
+            float dx = radius * cos(angle);
+            float dy = radius * sin(angle);
+            glVertex2f(x + dx, y + dy);
+        }
+        glEnd();
+    }
 }

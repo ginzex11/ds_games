@@ -82,16 +82,17 @@ void Character::moveAlongPath(const std::vector<Character*>& allCharacters) {
         // Path is blocked - increment counter
         blockedTurns++;
         
-        // If blocked for 3+ turns, clear path so it will be recalculated
-        if (blockedTurns >= 3) {
+        // If blocked for 5+ turns, clear path AND skip updating this turn
+        // This gives the blocker more time to move out of the way
+        if (blockedTurns >= 5) {
             if (blocker) {
                 std::cout << "[" << characterTypeToChar(type) << " " << teamToString(team) 
                          << "] Blocked for " << blockedTurns << " turns by " 
                          << characterTypeToChar(blocker->getType()) << " " << teamToString(blocker->getTeam())
-                         << " at (" << nextPos.x << "," << nextPos.y << "), clearing path\n";
+                         << " at (" << nextPos.x << "," << nextPos.y << "), clearing path and waiting\n";
             } else {
                 std::cout << "[" << characterTypeToChar(type) << " " << teamToString(team) 
-                         << "] Blocked for " << blockedTurns << " turns, clearing path\n";
+                         << "] Blocked for " << blockedTurns << " turns, clearing path and waiting\n";
             }
             currentPath.clear();
             pathIndex = 0;

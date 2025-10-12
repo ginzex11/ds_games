@@ -15,6 +15,50 @@ Medic::Medic(Position pos, Team t)
 void Medic::update(const Map& map, const std::vector<Character*>& allCharacters, int currentTurn) {
     if (!alive) return;
     
+    // YIELD LOGIC: If standing still and blocking friendly warriors, move aside
+    if (currentPath.empty() || pathIndex >= static_cast<int>(currentPath.size())) {
+        // Check if any friendly warriors want this position
+        for (Character* c : allCharacters) {
+            if (c->isAlive() && c->getTeam() == team && c->getType() == CharacterType::WARRIOR) {
+                // Check if warrior's next move is to our position
+                const auto& path = c->getCurrentPath();
+                int idx = c->getPathIndex();
+                if (!path.empty() && idx < static_cast<int>(path.size())) {
+                    Position warriorNextPos = path[idx];
+                    if (warriorNextPos == position) {
+                        // Warrior wants our position - move to adjacent free cell
+                        LOG_CHARACTER("[MEDIC " << teamToString(team) << "] Yielding position to warrior\n");
+                        // Check all 4 adjacent cells
+                        std::vector<Position> neighbors = {
+                            Position(position.x + 1, position.y),
+                            Position(position.x - 1, position.y),
+                            Position(position.x, position.y + 1),
+                            Position(position.x, position.y - 1)
+                        };
+                        for (const Position& neighbor : neighbors) {
+                            if (isValidPosition(neighbor) && map.isPassable(neighbor)) {
+                                // Check if neighbor is not occupied
+                                bool neighborFree = true;
+                                for (Character* other : allCharacters) {
+                                    if (other != this && other->isAlive() && other->getPosition() == neighbor) {
+                                        neighborFree = false;
+                                        break;
+                                    }
+                                }
+                                if (neighborFree) {
+                                    currentPath = {neighbor};
+                                    pathIndex = 0;
+                                    break;
+                                }
+                            }
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    
     // Update visibility
     updateVisibility(map);
     scanForEnemies(allCharacters, currentTurn);
@@ -53,14 +97,14 @@ void Medic::update(const Map& map, const std::vector<Character*>& allCharacters,
             pathIndex = 0;
             return;  // Stop execution immediately
         } else {
-            // Check if adjacent to patient (within 1 cell)
+            // Check if close enough to patient (within 2 cells - manhattan distance)
             float distance = position.manhattanDistance(currentPatient->getPosition());
             LOG_CHARACTER("[MEDIC " << teamToString(team) << "] Distance to patient: " << distance 
                      << " | Has medicine: " << (hasMedicine() ? "Yes" : "No") 
                      << " | Supplies: " << medicineSupplies << "\n");
             
-            if (distance <= 1) {
-                // Adjacent or same cell - can heal
+            if (distance <= 2) {
+                // Close enough - can heal (allows diagonal adjacency)
                 if (hasMedicine()) {
                     LOG_CHARACTER("[MEDIC " << teamToString(team) << "] Healing patient!\n");
                     healPatient();

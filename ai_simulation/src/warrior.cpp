@@ -45,28 +45,83 @@ void Warrior::update(const Map& map, const std::vector<Character*>& allCharacter
         return;  // Retreat is top priority - exit early
     }
     
-    // PRIORITY 3: If critically low on resources but not retreating, defensive mode
+    // PRIORITY 3: If critically low on resources but not retreating, move towards support
     if (needsHealing || needsAmmo) {
-        LOG_CHARACTER("[WARRIOR " << teamToString(team) << "] Low on resources, defensive mode\n");
+        LOG_CHARACTER("[WARRIOR " << teamToString(team) << "] Low on resources, seeking support\n");
         
-        // Still shoot at ANY visible enemy (defensive mode doesn't mean passive!)
+        // Still shoot at ANY visible enemy while moving
         Character* visibleEnemy = findNearestEnemy(allCharacters);
-        if (visibleEnemy) {
-            LOG_CHARACTER("[WARRIOR " << teamToString(team) << "] Defensive shot at enemy\n");
+        if (visibleEnemy && ammo > 0) {
+            LOG_CHARACTER("[WARRIOR " << teamToString(team) << "] Defensive shot while seeking support\n");
             tryShootEnemy(visibleEnemy, map);
         }
         
-        // If we have a DEFEND order, execute it and stay put
-        if (currentOrder.type == OrderType::DEFEND) {
-            executeDefendOrder(map, allCharacters);
-            moveAlongPath(allCharacters);
-            return;  // Don't move aggressively when defending
+        // ACTIVELY MOVE towards medic/supplier instead of sitting still
+        Character* supportUnit = nullptr;
+        CharacterType neededType = needsHealing ? CharacterType::MEDIC : CharacterType::SUPPLIER;
+        
+        // Find friendly medic or supplier
+        for (Character* c : allCharacters) {
+            if (c->isAlive() && c->getTeam() == team && c->getType() == neededType) {
+                supportUnit = c;
+                break;
+            }
         }
         
-        // No defend order but need resources - stay still but KEEP SHOOTING
-        // Don't move to avoid danger, but defend position
-        LOG_CHARACTER("[WARRIOR " << teamToString(team) << "] Holding position, needs support\n");
-        // Continue to check for orders and shoot, but don't move aggressively
+        // Move towards support unit if found and not adjacent
+        if (supportUnit) {
+            float distance = position.manhattanDistance(supportUnit->getPosition());
+            if (distance > 1) {
+                // Check if support is already coming towards us (distance decreasing)
+                // If support is within reasonable range (10 tiles), WAIT for them
+                if (distance <= 10) {
+                    LOG_CHARACTER("[WARRIOR " << teamToString(team) << "] Support within range (" 
+                             << distance << " tiles), waiting at position\n");
+                    currentPath.clear();
+                    pathIndex = 0;
+                } else {
+                    // Support far away - move closer
+                    Position supportPos = supportUnit->getPosition();
+                    bool needsNewPath = currentPath.empty() || 
+                                       pathIndex >= static_cast<int>(currentPath.size()) ||
+                                       currentPath.back() != supportPos;
+                    
+                    if (needsNewPath) {
+                        LOG_CHARACTER("[WARRIOR " << teamToString(team) << "] Moving towards " 
+                                 << (needsHealing ? "medic" : "supplier") 
+                                 << " at (" << supportPos.x << "," << supportPos.y << ")\n");
+                        
+                        // Use safety map but low weight - getting support is priority
+                        std::vector<Position> enemyPos;
+                        for (Character* c : allCharacters) {
+                            if (c->isAlive() && c->getTeam() != team) {
+                                enemyPos.push_back(c->getPosition());
+                            }
+                        }
+                        auto safetyMap = AI::generateSafetyMap(enemyPos, map);
+                        currentPath = AI::findPath(position, supportPos, map, &safetyMap, 0.05f);
+                        
+                        if (currentPath.empty()) {
+                            // Fallback - direct path
+                            currentPath = AI::findPath(position, supportPos, map);
+                        }
+                        
+                        pathIndex = 0;
+                    }
+                }
+            } else {
+                // Adjacent to support - wait for them
+                LOG_CHARACTER("[WARRIOR " << teamToString(team) << "] Adjacent to support, waiting\n");
+                currentPath.clear();
+                pathIndex = 0;
+            }
+        } else {
+            // No support found - hold position
+            LOG_CHARACTER("[WARRIOR " << teamToString(team) << "] No support found, holding position\n");
+        }
+        
+        moveAlongPath(allCharacters);
+        return;  // Don't execute other orders while seeking support
     }
     
     // Healthy and supplied - normal combat behavior
@@ -110,10 +165,43 @@ void Warrior::update(const Map& map, const std::vector<Character*>& allCharacter
         if (currentPath.empty()) {
             executeMoveOrder(map, allCharacters);
             
-            // If path still empty after calculation, clear order
+            // If path still empty after calculation, try to find ANY adjacent free cell to escape
             if (currentPath.empty()) {
-                LOG_CHARACTER("[WARRIOR " << teamToString(team) << "] MOVE order path empty after calculation, clearing order\n");
-                currentOrder = Order();
+                LOG_CHARACTER("[WARRIOR " << teamToString(team) << "] MOVE order path empty, trying to find escape route\n");
+                
+                // Try to move to any adjacent passable cell that's not occupied
+                std::vector<Position> neighbors = {
+                    Position(position.x + 1, position.y),
+                    Position(position.x - 1, position.y),
+                    Position(position.x, position.y + 1),
+                    Position(position.x, position.y - 1)
+                };
+                
+                for (const Position& neighbor : neighbors) {
+                    if (isValidPosition(neighbor) && map.isPassable(neighbor)) {
+                        // Check if not occupied
+                        bool occupied = false;
+                        for (Character* c : allCharacters) {
+                            if (c != this && c->isAlive() && c->getPosition() == neighbor) {
+                                occupied = true;
+                                break;
+                            }
+                        }
+                        
+                        if (!occupied) {
+                            LOG_CHARACTER("[WARRIOR " << teamToString(team) << "] Found escape cell, moving to adjacent position\n");
+                            currentPath = {neighbor};
+                            pathIndex = 0;
+                            break;
+                        }
+                    }
+                }
+                
+                // If still no path, clear order and wait
+                if (currentPath.empty()) {
+                    LOG_CHARACTER("[WARRIOR " << teamToString(team) << "] Completely stuck, clearing MOVE order\n");
+                    currentOrder = Order();
+                }
             }
         } else if (visibleEnemy && !enemySightings.empty()) {
             // If we see an enemy while moving, engage them immediately!

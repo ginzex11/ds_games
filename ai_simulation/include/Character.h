@@ -53,6 +53,8 @@ public:
     const std::vector<EnemySighting>& getEnemySightings() const { return enemySightings; }
     Order getCurrentOrder() const { return currentOrder; }
     char getTypeChar() const { return characterTypeToChar(type); }
+    const std::vector<Position>& getCurrentPath() const { return currentPath; }
+    int getPathIndex() const { return pathIndex; }
     
     // Setters
     void setPosition(Position pos) { position = pos; }

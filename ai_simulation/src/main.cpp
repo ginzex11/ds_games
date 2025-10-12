@@ -68,6 +68,16 @@ void keyboardCallback(unsigned char key, int x, int y) {
             Logger::log(Logger::LogType::CONTROL, "Toggling fog of war");
             globalSimulation->toggleFogOfWar();
             break;
+        case 'v':  // V - toggle vision cones
+        case 'V':
+            Logger::log(Logger::LogType::CONTROL, "Toggling vision cones");
+            globalSimulation->toggleVisionCones();
+            break;
+        case 'w':  // W - toggle weapon ranges
+        case 'W':
+            Logger::log(Logger::LogType::CONTROL, "Toggling weapon ranges");
+            globalSimulation->toggleWeaponRanges();
+            break;
         case 27:   // ESC - exit
             Logger::log(Logger::LogType::CONTROL, "Exiting application");
             Logger::shutdown();
@@ -143,6 +153,8 @@ int main(int argc, char** argv) {
     std::cout << "  R     - Reset simulation\n";
     std::cout << "  +/-   - Speed up/slow down\n";
     std::cout << "  F     - Toggle fog of war\n";
+    std::cout << "  V     - Toggle vision cones\n";
+    std::cout << "  W     - Toggle weapon ranges\n";
     std::cout << "  ESC   - Exit\n\n";
     std::cout << "Game Rules:\n";
     std::cout << "  - Blue team (left) vs Orange team (right)\n";
