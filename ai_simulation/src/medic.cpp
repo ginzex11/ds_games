@@ -97,53 +97,57 @@ void Medic::update(const Map& map, const std::vector<Character*>& allCharacters,
             currentPath.clear();  // Clear path to stop moving
             pathIndex = 0;
             return;  // Stop execution immediately
-        } else {
-            // Check if close enough to patient (within 2 cells - manhattan distance)
-            float distance = position.manhattanDistance(currentPatient->getPosition());
-            LOG_CHARACTER("[MEDIC " << teamToString(team) << "] Distance to patient: " << distance 
-                     << " | Has medicine: " << (hasMedicine() ? "Yes" : "No") 
-                     << " | Supplies: " << medicineSupplies << "\n");
-            
-            if (distance <= 2) {
-                // Close enough - can heal (allows diagonal adjacency)
-                if (hasMedicine()) {
-                    LOG_CHARACTER("[MEDIC " << teamToString(team) << "] Healing patient!\n");
-                    healPatient();
-                } else {
-                    LOG_CHARACTER("[MEDIC " << teamToString(team) << "] No medicine, going to warehouse\n");
-                    travelToWarehouse(map, safetyMap);
-                }
-            } else if (!hasMedicine() && !returningFromWarehouse) {
-                // Need to get medicine first
-                LOG_CHARACTER("[MEDIC " << teamToString(team) << "] Going to warehouse for supplies\n");
-                travelToWarehouse(map, safetyMap);
+        }
+        
+        // PROACTIVE: If no medicine, get supplies FIRST before traveling to patient
+        if (!hasMedicine() && !returningFromWarehouse) {
+            LOG_CHARACTER("[MEDIC " << teamToString(team) << "] No medicine! Going to warehouse before patient\n");
+            travelToWarehouse(map, safetyMap);
+            return;  // Don't travel to patient yet
+        }
+        
+        // Have medicine or returning from warehouse - now handle patient
+        // Check if close enough to patient (within 2 cells - manhattan distance)
+        float distance = position.manhattanDistance(currentPatient->getPosition());
+        LOG_CHARACTER("[MEDIC " << teamToString(team) << "] Distance to patient: " << distance 
+                 << " | Has medicine: " << (hasMedicine() ? "Yes" : "No") 
+                 << " | Supplies: " << medicineSupplies << "\n");
+        
+        if (distance <= 2) {
+            // Close enough - can heal (allows diagonal adjacency)
+            if (hasMedicine()) {
+                LOG_CHARACTER("[MEDIC " << teamToString(team) << "] Healing patient!\n");
+                healPatient();
             } else {
-                // Have medicine or returning, move towards patient
-                Position patientPos = currentPatient->getPosition();
-                
-                // Update path if patient has moved significantly (retreating warriors move!)
-                // or if we have no path or path is nearly complete
-                bool needsNewPath = currentPath.empty() || 
-                                   pathIndex >= static_cast<int>(currentPath.size()) - 2;
-                
-                // Check if patient moved from our target (happens during retreat)
-                if (!needsNewPath && !currentPath.empty()) {
-                    Position currentTarget = currentPath[currentPath.size() - 1];
-                    if (currentTarget != patientPos) {
-                        needsNewPath = true;
-                        LOG_CHARACTER("[MEDIC " << teamToString(team) << "] Patient moved! Recalculating path\n");
-                    }
+                LOG_CHARACTER("[MEDIC " << teamToString(team) << "] At patient but no medicine, going to warehouse\n");
+                travelToWarehouse(map, safetyMap);
+            }
+        } else {
+            // Have medicine or returning, move towards patient
+            Position patientPos = currentPatient->getPosition();
+            
+            // Update path if patient has moved significantly (retreating warriors move!)
+            // or if we have no path or path is nearly complete
+            bool needsNewPath = currentPath.empty() || 
+                               pathIndex >= static_cast<int>(currentPath.size()) - 2;
+            
+            // Check if patient moved from our target (happens during retreat)
+            if (!needsNewPath && !currentPath.empty()) {
+                Position currentTarget = currentPath[currentPath.size() - 1];
+                if (currentTarget != patientPos) {
+                    needsNewPath = true;
+                    LOG_CHARACTER("[MEDIC " << teamToString(team) << "] Patient moved! Recalculating path\n");
                 }
-                
-                if (needsNewPath) {
-                    LOG_CHARACTER("[MEDIC " << teamToString(team) << "] Moving towards patient at (" 
-                             << patientPos.x << "," << patientPos.y << ")"
-                             << " | Recalculating path\n");
-                    travelToPatient(map, safetyMap);
-                } else {
-                    LOG_CHARACTER("[MEDIC " << teamToString(team) << "] Following existing path to patient"
-                             << " | Path size: " << currentPath.size() << " | PathIndex: " << pathIndex << "\n");
-                }
+            }
+            
+            if (needsNewPath) {
+                LOG_CHARACTER("[MEDIC " << teamToString(team) << "] Moving towards patient at (" 
+                         << patientPos.x << "," << patientPos.y << ")"
+                         << " | Recalculating path\n");
+                travelToPatient(map, safetyMap);
+            } else {
+                LOG_CHARACTER("[MEDIC " << teamToString(team) << "] Following existing path to patient"
+                         << " | Path size: " << currentPath.size() << " | PathIndex: " << pathIndex << "\n");
             }
         }
     }
@@ -169,6 +173,14 @@ void Medic::executeOrder(Order order, const Map& map) {
     if (order.type == OrderType::HEAL) {
         currentPatient = order.targetCharacter;
         returningFromWarehouse = false;
+        
+        // PROACTIVE SUPPLY MANAGEMENT: If no medicine, go to warehouse immediately
+        // This allows medic to prepare BEFORE warrior retreats all the way back
+        if (!hasMedicine()) {
+            LOG_CHARACTER("[MEDIC " << teamToString(team) 
+                     << "] PROACTIVE: Received heal order but no supplies. Going to warehouse first!\n");
+            // Path to warehouse will be calculated in update() with safety map
+        }
         // Path will be calculated in update() with safety map
     } else if (order.type == OrderType::MOVE) {
         currentPath = AI::findPath(position, order.targetPosition, map);

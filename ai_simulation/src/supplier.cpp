@@ -97,53 +97,57 @@ void Supplier::update(const Map& map, const std::vector<Character*>& allCharacte
             currentPath.clear();  // Clear path to stop moving
             pathIndex = 0;
             return;  // Stop execution immediately
-        } else {
-            // Check if close enough to recipient (within 2 cells - manhattan distance)
-            float distance = position.manhattanDistance(currentRecipient->getPosition());
-            LOG_CHARACTER("[SUPPLIER " << teamToString(team) << "] Distance to recipient: " << distance 
-                     << " | Has ammo: " << (hasAmmo() ? "Yes" : "No")
-                     << " | Supplies: " << ammoSupplies << "\n");
-            
-            if (distance <= 2) {
-                // Close enough - can resupply (allows diagonal adjacency)
-                if (hasAmmo()) {
-                    LOG_CHARACTER("[SUPPLIER " << teamToString(team) << "] Resupplying recipient!\n");
-                    resupplyRecipient();
-                } else {
-                    LOG_CHARACTER("[SUPPLIER " << teamToString(team) << "] No ammo, going to warehouse\n");
-                    travelToWarehouse(map, safetyMap);
-                }
-            } else if (!hasAmmo() && !returningFromWarehouse) {
-                // Need to get ammo first
-                LOG_CHARACTER("[SUPPLIER " << teamToString(team) << "] Going to warehouse for supplies\n");
-                travelToWarehouse(map, safetyMap);
+        }
+        
+        // PROACTIVE: If no ammo, get supplies FIRST before traveling to recipient
+        if (!hasAmmo() && !returningFromWarehouse) {
+            LOG_CHARACTER("[SUPPLIER " << teamToString(team) << "] No ammo! Going to warehouse before recipient\n");
+            travelToWarehouse(map, safetyMap);
+            return;  // Don't travel to recipient yet
+        }
+        
+        // Have ammo or returning from warehouse - now handle recipient
+        // Check if close enough to recipient (within 2 cells - manhattan distance)
+        float distance = position.manhattanDistance(currentRecipient->getPosition());
+        LOG_CHARACTER("[SUPPLIER " << teamToString(team) << "] Distance to recipient: " << distance 
+                 << " | Has ammo: " << (hasAmmo() ? "Yes" : "No")
+                 << " | Supplies: " << ammoSupplies << "\n");
+        
+        if (distance <= 2) {
+            // Close enough - can resupply (allows diagonal adjacency)
+            if (hasAmmo()) {
+                LOG_CHARACTER("[SUPPLIER " << teamToString(team) << "] Resupplying recipient!\n");
+                resupplyRecipient();
             } else {
-                // Have ammo or returning, move towards recipient
-                Position recipientPos = currentRecipient->getPosition();
-                
-                // Update path if recipient has moved significantly
-                // or if we have no path or path is nearly complete
-                bool needsNewPath = currentPath.empty() || 
-                                   pathIndex >= static_cast<int>(currentPath.size()) - 2;
-                
-                // Check if recipient moved from our target
-                if (!needsNewPath && !currentPath.empty()) {
-                    Position currentTarget = currentPath[currentPath.size() - 1];
-                    if (currentTarget != recipientPos) {
-                        needsNewPath = true;
-                        LOG_CHARACTER("[SUPPLIER " << teamToString(team) << "] Recipient moved! Recalculating path\n");
-                    }
+                LOG_CHARACTER("[SUPPLIER " << teamToString(team) << "] At recipient but no ammo, going to warehouse\n");
+                travelToWarehouse(map, safetyMap);
+            }
+        } else {
+            // Have ammo or returning, move towards recipient
+            Position recipientPos = currentRecipient->getPosition();
+            
+            // Update path if recipient has moved significantly
+            // or if we have no path or path is nearly complete
+            bool needsNewPath = currentPath.empty() || 
+                               pathIndex >= static_cast<int>(currentPath.size()) - 2;
+            
+            // Check if recipient moved from our target
+            if (!needsNewPath && !currentPath.empty()) {
+                Position currentTarget = currentPath[currentPath.size() - 1];
+                if (currentTarget != recipientPos) {
+                    needsNewPath = true;
+                    LOG_CHARACTER("[SUPPLIER " << teamToString(team) << "] Recipient moved! Recalculating path\n");
                 }
-                
-                if (needsNewPath) {
-                    LOG_CHARACTER("[SUPPLIER " << teamToString(team) << "] Moving towards recipient at (" 
-                             << recipientPos.x << "," << recipientPos.y << ")"
-                             << " | Recalculating path\n");
-                    travelToRecipient(map, safetyMap);
-                } else {
-                    LOG_CHARACTER("[SUPPLIER " << teamToString(team) << "] Following existing path to recipient"
-                             << " | Path size: " << currentPath.size() << " | PathIndex: " << pathIndex << "\n");
-                }
+            }
+            
+            if (needsNewPath) {
+                LOG_CHARACTER("[SUPPLIER " << teamToString(team) << "] Moving towards recipient at (" 
+                         << recipientPos.x << "," << recipientPos.y << ")"
+                         << " | Recalculating path\n");
+                travelToRecipient(map, safetyMap);
+            } else {
+                LOG_CHARACTER("[SUPPLIER " << teamToString(team) << "] Following existing path to recipient"
+                         << " | Path size: " << currentPath.size() << " | PathIndex: " << pathIndex << "\n");
             }
         }
     }
@@ -169,6 +173,14 @@ void Supplier::executeOrder(Order order, const Map& map) {
     if (order.type == OrderType::RESUPPLY) {
         currentRecipient = order.targetCharacter;
         returningFromWarehouse = false;
+        
+        // PROACTIVE SUPPLY MANAGEMENT: If no ammo, go to warehouse immediately
+        // This allows supplier to prepare BEFORE warrior calls for resupply
+        if (!hasAmmo()) {
+            LOG_CHARACTER("[SUPPLIER " << teamToString(team) 
+                     << "] PROACTIVE: Received resupply order but no supplies. Going to warehouse first!\n");
+            // Path to warehouse will be calculated in update() with safety map
+        }
         // Path will be calculated in update() with safety map
     } else if (order.type == OrderType::MOVE) {
         currentPath = AI::findPath(position, order.targetPosition, map);
