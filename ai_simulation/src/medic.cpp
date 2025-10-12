@@ -157,6 +157,8 @@ void Medic::travelToPatient(const Map& map, const std::vector<std::vector<float>
     if (!currentPatient) return;
     
     Position patientPos = currentPatient->getPosition();
+    LOG_CHARACTER("[MEDIC " << teamToString(team) << "] Calculating path to patient at (" 
+             << patientPos.x << "," << patientPos.y << ") using safety map\n");
     currentPath = AI::findPath(position, patientPos, map, &safetyMap, 0.5f);
     pathIndex = 0;
 }

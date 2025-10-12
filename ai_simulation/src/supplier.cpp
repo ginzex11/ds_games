@@ -157,6 +157,8 @@ void Supplier::travelToRecipient(const Map& map, const std::vector<std::vector<f
     if (!currentRecipient) return;
     
     Position recipientPos = currentRecipient->getPosition();
+    LOG_CHARACTER("[SUPPLIER " << teamToString(team) << "] Calculating path to recipient at (" 
+             << recipientPos.x << "," << recipientPos.y << ") using safety map\n");
     currentPath = AI::findPath(position, recipientPos, map, &safetyMap, 0.5f);
     pathIndex = 0;
 }
