@@ -6,7 +6,8 @@
  */
 Supplier::Supplier(Position pos, Team t)
     : Character(pos, t, CharacterType::SUPPLIER),
-      ammoSupplies(3), currentRecipient(nullptr), returningFromWarehouse(false) {
+      ammoSupplies(0), currentRecipient(nullptr), returningFromWarehouse(false) {
+    // Suppliers must visit warehouse FIRST to get supplies before resupplying
 }
 
 /**

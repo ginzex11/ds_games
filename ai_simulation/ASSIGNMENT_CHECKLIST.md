@@ -11,6 +11,11 @@
 - [x] Water is visually distinct (light blue)
 - [x] Water is generated on the map (~17% coverage)
 
+**Additional Terrain Rules (Per Assignment)**:
+- [x] Rocks: Block movement, sight, and shooting
+- [x] Trees: Allow movement, block sight and shooting
+- [x] Water: Block movement, allow sight and shooting
+
 **Files**: 
 - `common.h` lines 76, 160-165 (CellType::WATER, isPassable, blocksSight)
 - `Map.cpp` lines 18-70 (generation)

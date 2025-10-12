@@ -205,6 +205,19 @@ WarehouseType Map::getWarehouseType(const Position& pos) const {
 }
 
 /**
+ * @brief Get which team owns a warehouse at this position
+ */
+Team Map::getWarehouseTeam(const Position& pos) const {
+    if (!isWarehouse(pos)) return Team::BLUE;  // Default
+    
+    if (pos == blueAmmoWarehouse || pos == blueMedicineWarehouse) {
+        return Team::BLUE;
+    } else {
+        return Team::ORANGE;
+    }
+}
+
+/**
  * @brief Reset the map to initial state
  */
 void Map::reset() {

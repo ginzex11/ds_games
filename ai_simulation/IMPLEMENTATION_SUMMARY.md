@@ -14,6 +14,11 @@
   - **Allows sight**: NOT included in `blocksSight()` - units can see through water
   - **Allows shooting**: Line of sight includes water - bullets travel through water
 
+#### Terrain Rules (Per Assignment)
+- **Rocks**: ❌ Movement, ❌ Sight, ❌ Shooting (complete barrier and hiding spot)
+- **Trees**: ✅ Movement, ❌ Sight, ❌ Shooting (can walk through but provides visual cover)
+- **Water**: ❌ Movement, ✅ Sight, ✅ Shooting (cannot cross but can shoot over)
+
 #### 2. Team Visibility Aggregation
 - **Status**: ✅ COMPLETE (Latest commit: 8871ca5)
 - **Implementation**:

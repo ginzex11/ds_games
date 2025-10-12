@@ -36,6 +36,7 @@ public:
     Position getWarehouse(Team team, WarehouseType type) const;
     bool isWarehouse(const Position& pos) const;
     WarehouseType getWarehouseType(const Position& pos) const;
+    Team getWarehouseTeam(const Position& pos) const;  // Get which team owns this warehouse
     
     // Utility
     void reset();

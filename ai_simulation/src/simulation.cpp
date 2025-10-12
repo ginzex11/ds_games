@@ -270,10 +270,29 @@ void Simulation::renderCell(int x, int y) {
             r = 0.6f; g = 0.8f; b = 1.0f;  // Light blue water
             drawSquare(screenX, screenY, CELL_SIZE - 1, r, g, b);
             break;
-        case CellType::WAREHOUSE:
-            r = 0.9f; g = 0.9f; b = 0.3f;  // Yellow
+        case CellType::WAREHOUSE: {
+            // Color-code warehouses by team ownership
+            Team warehouseTeam = gameMap.getWarehouseTeam(Position{x, y});
+            WarehouseType warehouseType = gameMap.getWarehouseType(Position{x, y});
+            
+            if (warehouseTeam == Team::BLUE) {
+                r = 0.3f; g = 0.5f; b = 1.0f;  // Blue warehouse
+            } else {
+                r = 1.0f; g = 0.5f; b = 0.2f;  // Orange warehouse
+            }
             drawSquare(screenX, screenY, CELL_SIZE - 1, r, g, b);
+            
+            // Draw icon to indicate warehouse type (M=Medicine, A=Ammo)
+            glColor3f(1.0f, 1.0f, 1.0f);  // White text
+            glRasterPos2f(screenX + CELL_SIZE/3, screenY + CELL_SIZE/2);
+            
+            if (warehouseType == WarehouseType::MEDICINE) {
+                glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, 'M');
+            } else if (warehouseType == WarehouseType::AMMO) {
+                glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, 'A');
+            }
             break;
+        }
         default:
             drawSquare(screenX, screenY, CELL_SIZE - 1, r, g, b);
             break;

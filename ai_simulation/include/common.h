@@ -153,10 +153,12 @@ struct Cell {
         : type(t), warehouseType(wt) {}
     
     bool isPassable() const {
+        // Per assignment: Trees allow movement, Rocks/Water block movement
         return type == CellType::EMPTY || type == CellType::TREE || type == CellType::WAREHOUSE;
     }
     
     bool blocksSight() const {
+        // Per assignment: Rocks and Trees block sight/shooting, Water allows sight/shooting
         return type == CellType::ROCK || type == CellType::TREE;
     }
 };

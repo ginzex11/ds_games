@@ -6,7 +6,8 @@
  */
 Medic::Medic(Position pos, Team t)
     : Character(pos, t, CharacterType::MEDIC),
-      medicineSupplies(3), currentPatient(nullptr), returningFromWarehouse(false) {
+      medicineSupplies(0), currentPatient(nullptr), returningFromWarehouse(false) {
+    // Medics must visit warehouse FIRST to get supplies before healing
 }
 
 /**
