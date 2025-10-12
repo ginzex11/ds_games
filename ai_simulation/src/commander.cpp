@@ -98,6 +98,15 @@ void Commander::issueOrders(const std::vector<Character*>& teamMembers, const Ma
     LOG_CHARACTER("[COMMANDER " << teamToString(team) << "] Issuing orders to team...\n");
     
     for (Character* member : teamMembers) {
+        // Check if warrior is retreating - DO NOT interrupt retreat!
+        if (member->getType() == CharacterType::WARRIOR) {
+            Warrior* w = dynamic_cast<Warrior*>(member);
+            if (w && w->getIsRetreating()) {
+                LOG_CHARACTER("  - W is RETREATING, skipping (do not interrupt!)\n");
+                continue;  // Warriors in retreat mode manage themselves
+            }
+        }
+        
         // Only issue new orders if member doesn't have an active order
         if (member->getCurrentOrder().type != OrderType::NONE) {
             LOG_CHARACTER("  - " << characterTypeToChar(member->getType()) 
