@@ -184,11 +184,38 @@ Order Commander::determineWarriorOrder(Character* warrior, const Map& map) {
 
 /**
  * @brief Determine order for medic
+ * PRIORITY SYSTEM:
+ * 1. Warriors in retreat mode (HP <= 40%) - CRITICAL
+ * 2. Warriors needing healing (HP <= 50%) - HIGH
  */
 Order Commander::determineMedicOrder(Character* medic, const std::vector<Character*>& teamMembers, const Map& map) {
-    // Find warriors needing healing
+    // PRIORITY 1: Find retreating warriors (HP <= 40%) - CRITICAL
+    Warrior* criticalWarrior = nullptr;
+    float closestCriticalDist = 999999.0f;
+    
     for (Character* member : teamMembers) {
-        if (member->getType() == CharacterType::WARRIOR && member->isAlive()) {  // Check if alive!
+        if (member->getType() == CharacterType::WARRIOR && member->isAlive()) {
+            Warrior* w = dynamic_cast<Warrior*>(member);
+            if (w && w->getIsRetreating()) {
+                float dist = medic->getPosition().euclideanDistance(member->getPosition());
+                if (dist < closestCriticalDist) {
+                    closestCriticalDist = dist;
+                    criticalWarrior = w;
+                }
+            }
+        }
+    }
+    
+    if (criticalWarrior) {
+        LOG_CHARACTER("  [Commander] PRIORITY HEAL: Medic assigned to RETREATING " << teamToString(criticalWarrior->getTeam()) 
+                 << " warrior at (" << criticalWarrior->getPosition().x << "," << criticalWarrior->getPosition().y 
+                 << ") with HP:" << criticalWarrior->getHealth() << " - CRITICAL!\n");
+        return Order(OrderType::HEAL, criticalWarrior->getPosition(), criticalWarrior);
+    }
+    
+    // PRIORITY 2: Find warriors needing healing (HP <= 50%) - HIGH
+    for (Character* member : teamMembers) {
+        if (member->getType() == CharacterType::WARRIOR && member->isAlive()) {
             Warrior* w = dynamic_cast<Warrior*>(member);
             if (w && w->getNeedsHealing()) {
                 LOG_CHARACTER("  [Commander] Assigning medic to heal " << teamToString(member->getTeam()) 

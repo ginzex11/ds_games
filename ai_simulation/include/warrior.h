@@ -19,6 +19,8 @@ private:
     int grenades;
     bool needsAmmo;
     bool needsHealing;
+    bool isRetreating;              // True when warrior is actively retreating to safety
+    Position retreatTarget;         // Position to retreat towards (usually medic location)
     Position lastKnownEnemyPosition;
     int lastLoggedTurn;  // Track when this warrior last logged to avoid spam
     
@@ -28,6 +30,8 @@ private:
     void executeAttackOrder(const Map& map, const std::vector<Character*>& allCharacters);
     void executeDefendOrder(const Map& map, const std::vector<Character*>& allCharacters);
     void executeMoveOrder(const Map& map);
+    void evaluateRetreat(const std::vector<Character*>& allCharacters);  // Check if retreat needed
+    void executeRetreat(const Map& map, const std::vector<Character*>& allCharacters);  // Perform retreat
     
 public:
     Warrior(Position pos, Team t);
@@ -42,6 +46,7 @@ public:
     // Status queries
     bool getNeedsAmmo() const { return needsAmmo; }
     bool getNeedsHealing() const { return needsHealing; }
+    bool getIsRetreating() const { return isRetreating; }
     int getAmmo() const { return ammo; }
     int getGrenades() const { return grenades; }
 };

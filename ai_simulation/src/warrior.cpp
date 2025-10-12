@@ -6,7 +6,8 @@
 Warrior::Warrior(Position pos, Team t)
     : Character(pos, t, CharacterType::WARRIOR),
       ammo(INITIAL_AMMO), grenades(INITIAL_GRENADES),
-      needsAmmo(false), needsHealing(false), lastLoggedTurn(-1) {
+      needsAmmo(false), needsHealing(false), isRetreating(false), 
+      retreatTarget(pos), lastLoggedTurn(-1) {
 }
 
 /**
@@ -22,19 +23,29 @@ void Warrior::update(const Map& map, const std::vector<Character*>& allCharacter
     // Check resource status
     checkResources();
     
+    // PRIORITY 1: Evaluate retreat conditions (40% HP or lower)
+    evaluateRetreat(allCharacters);
+    
     // Log status once per turn (each warrior tracks its own last log turn)
     if (currentTurn != lastLoggedTurn) {
         LOG_CHARACTER("[WARRIOR " << teamToString(team) << " at (" << position.x << "," << position.y 
                  << ")] HP:" << health << "/" << INITIAL_HEALTH 
                  << " | Ammo:" << ammo << "/" << INITIAL_AMMO
                  << " | Order:" << orderTypeToString(currentOrder.type));
+        if (isRetreating) LOG_CHARACTER(" | RETREATING!");
         if (needsHealing) LOG_CHARACTER(" | NEEDS HEALING");
         if (needsAmmo) LOG_CHARACTER(" | NEEDS AMMO");
         LOG_CHARACTER("\n");
         lastLoggedTurn = currentTurn;
     }
     
-    // If critically low on resources, prioritize survival over combat
+    // PRIORITY 2: If retreating, execute retreat (overrides all other behavior)
+    if (isRetreating) {
+        executeRetreat(map, allCharacters);
+        return;  // Retreat is top priority - exit early
+    }
+    
+    // PRIORITY 3: If critically low on resources but not retreating, defensive mode
     if (needsHealing || needsAmmo) {
         LOG_CHARACTER("[WARRIOR " << teamToString(team) << "] Low on resources, defensive mode\n");
         
@@ -259,4 +270,127 @@ void Warrior::executeMoveOrder(const Map& map) {
         currentPath = AI::findPath(position, currentOrder.targetPosition, map);
         pathIndex = 0;
     }
+}
+
+/**
+ * @brief Evaluate if warrior should retreat
+ * Warriors retreat at 40% HP (RETREAT_HEALTH_THRESHOLD) to give time to escape
+ * Exit retreat mode when healed above 50% (LOW_HEALTH_THRESHOLD)
+ */
+void Warrior::evaluateRetreat(const std::vector<Character*>& allCharacters) {
+    // Enter retreat mode if health drops to 40% or lower
+    if (!isRetreating && health <= RETREAT_HEALTH_THRESHOLD) {
+        isRetreating = true;
+        
+        // Find friendly medic position to retreat towards
+        Character* friendlyMedic = nullptr;
+        float closestDist = 999999.0f;
+        
+        for (Character* c : allCharacters) {
+            if (c->isAlive() && c->getTeam() == team && c->getType() == CharacterType::MEDIC) {
+                float dist = position.euclideanDistance(c->getPosition());
+                if (dist < closestDist) {
+                    closestDist = dist;
+                    friendlyMedic = c;
+                }
+            }
+        }
+        
+        if (friendlyMedic) {
+            retreatTarget = friendlyMedic->getPosition();
+            LOG_CHARACTER("[WARRIOR " << teamToString(team) << "] ENTERING RETREAT MODE! HP:" 
+                     << health << "/" << INITIAL_HEALTH << " - Moving to medic at (" 
+                     << retreatTarget.x << "," << retreatTarget.y << ")\n");
+        } else {
+            // No medic available - retreat towards team commander/spawn area
+            if (team == Team::BLUE) {
+                retreatTarget = Position(5, GRID_HEIGHT / 2);  // Blue spawn area
+            } else {
+                retreatTarget = Position(GRID_WIDTH - 5, GRID_HEIGHT / 2);  // Orange spawn area
+            }
+            LOG_CHARACTER("[WARRIOR " << teamToString(team) << "] ENTERING RETREAT MODE! HP:" 
+                     << health << "/" << INITIAL_HEALTH << " - No medic, retreating to spawn area\n");
+        }
+        
+        // Clear current orders - retreat takes priority
+        currentOrder = Order();
+        currentPath.clear();
+        pathIndex = 0;
+    }
+    
+    // Exit retreat mode when healed above LOW_HEALTH_THRESHOLD (50%)
+    if (isRetreating && health > LOW_HEALTH_THRESHOLD) {
+        isRetreating = false;
+        needsHealing = false;  // Reset healing flag
+        currentPath.clear();
+        pathIndex = 0;
+        LOG_CHARACTER("[WARRIOR " << teamToString(team) << "] EXITING RETREAT MODE - Healed to HP:" 
+                 << health << "/" << INITIAL_HEALTH << " - Ready for combat!\n");
+    }
+}
+
+/**
+ * @brief Execute retreat behavior
+ * Move towards retreat target while maintaining defensive posture
+ * Shoot at close enemies but prioritize escape
+ */
+void Warrior::executeRetreat(const Map& map, const std::vector<Character*>& allCharacters) {
+    LOG_CHARACTER("[WARRIOR " << teamToString(team) << "] RETREATING to (" 
+             << retreatTarget.x << "," << retreatTarget.y << ") | HP:" << health << "/" << INITIAL_HEALTH << "\n");
+    
+    // Update retreat target if medic has moved (recalculate every few turns)
+    static int lastUpdateTurn = -10;
+    int currentTurn = lastLoggedTurn;  // Use last logged turn as approximation
+    
+    if (currentTurn - lastUpdateTurn > 3) {  // Update every 3 turns
+        Character* friendlyMedic = nullptr;
+        float closestDist = 999999.0f;
+        
+        for (Character* c : allCharacters) {
+            if (c->isAlive() && c->getTeam() == team && c->getType() == CharacterType::MEDIC) {
+                float dist = position.euclideanDistance(c->getPosition());
+                if (dist < closestDist) {
+                    closestDist = dist;
+                    friendlyMedic = c;
+                }
+            }
+        }
+        
+        if (friendlyMedic) {
+            retreatTarget = friendlyMedic->getPosition();
+        }
+        lastUpdateTurn = currentTurn;
+    }
+    
+    // Defensive shooting - only at close enemies (within 4 tiles)
+    Character* visibleEnemy = findNearestEnemy(allCharacters);
+    if (visibleEnemy && position.euclideanDistance(visibleEnemy->getPosition()) <= 4) {
+        LOG_CHARACTER("[WARRIOR " << teamToString(team) << "] Defensive shot while retreating\n");
+        tryShootEnemy(visibleEnemy, map);
+    }
+    
+    // Move towards retreat target
+    // Use pathfinding that avoids enemies (higher safety weight)
+    if (currentPath.empty() || currentPath.size() <= 1) {
+        // Generate safety map to avoid enemies during retreat
+        std::vector<Position> enemyPositions;
+        for (Character* c : allCharacters) {
+            if (c->isAlive() && c->getTeam() != team) {
+                enemyPositions.push_back(c->getPosition());
+            }
+        }
+        auto safetyMap = AI::generateSafetyMap(enemyPositions, map);
+        
+        // Find path with high safety weight (avoid enemies more aggressively)
+        currentPath = AI::findPath(position, retreatTarget, map, &safetyMap, 2.0f);  // 2.0f = high safety priority
+        pathIndex = 0;
+        
+        if (currentPath.empty()) {
+            LOG_CHARACTER("[WARRIOR " << teamToString(team) << "] No retreat path found! Holding position\n");
+        }
+    }
+    
+    // Move along retreat path
+    // Note: moveAlongPath checks for friendly units blocking, we'll handle that
+    moveAlongPath(allCharacters);
 }
