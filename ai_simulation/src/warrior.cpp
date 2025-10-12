@@ -343,9 +343,13 @@ void Warrior::evaluateRetreat(const std::vector<Character*>& allCharacters) {
         }
         
         if (friendlyMedic) {
-            retreatTarget = friendlyMedic->getPosition();
+            // Don't retreat to exact medic position - spread out around medic
+            // Use warrior's Y position to determine offset
+            int yOffset = (position.y < GRID_HEIGHT / 2) ? -2 : 2;
+            retreatTarget = Position(friendlyMedic->getPosition().x, 
+                                    friendlyMedic->getPosition().y + yOffset);
             LOG_CHARACTER("[WARRIOR " << teamToString(team) << "] ENTERING RETREAT MODE! HP:" 
-                     << health << "/" << INITIAL_HEALTH << " - Moving to medic at (" 
+                     << health << "/" << INITIAL_HEALTH << " - Moving to medic area at (" 
                      << retreatTarget.x << "," << retreatTarget.y << ")\n");
         } else {
             // No medic available - retreat towards team commander/spawn area

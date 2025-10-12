@@ -142,7 +142,14 @@ void Medic::travelToWarehouse(const Map& map, const std::vector<std::vector<floa
         LOG_CHARACTER("[MEDIC " << teamToString(team) << "] Calculating path to warehouse at (" 
                  << warehouse.x << "," << warehouse.y << ") using safety map\n");
         // Use lower safety weight for support units to ensure they can reach warehouses
-        currentPath = AI::findPath(position, warehouse, map, &safetyMap, 0.2f);
+        currentPath = AI::findPath(position, warehouse, map, &safetyMap, 0.1f);
+        
+        // Fallback: If no safe path, try direct path (medics MUST reach warehouse!)
+        if (currentPath.empty()) {
+            LOG_CHARACTER("[MEDIC " << teamToString(team) << "] No safe path, trying direct route\n");
+            currentPath = AI::findPath(position, warehouse, map);
+        }
+        
         pathIndex = 0;
         
         if (currentPath.empty()) {
