@@ -25,24 +25,24 @@ void Warrior::update(const Map& map, const std::vector<Character*>& allCharacter
     // Log status every update
     static int lastLogTurn = -1;
     if (currentTurn != lastLogTurn) {
-        std::cout << "[WARRIOR " << teamToString(team) << " at (" << position.x << "," << position.y 
+        LOG_CHARACTER("[WARRIOR " << teamToString(team) << " at (" << position.x << "," << position.y 
                  << ")] HP:" << health << "/" << INITIAL_HEALTH 
                  << " | Ammo:" << ammo << "/" << INITIAL_AMMO
-                 << " | Order:" << orderTypeToString(currentOrder.type);
-        if (needsHealing) std::cout << " | NEEDS HEALING";
-        if (needsAmmo) std::cout << " | NEEDS AMMO";
-        std::cout << "\n";
+                 << " | Order:" << orderTypeToString(currentOrder.type));
+        if (needsHealing) LOG_CHARACTER(" | NEEDS HEALING");
+        if (needsAmmo) LOG_CHARACTER(" | NEEDS AMMO");
+        LOG_CHARACTER("\n");
         lastLogTurn = currentTurn;
     }
     
     // If critically low on resources, prioritize survival over combat
     if (needsHealing || needsAmmo) {
-        std::cout << "[WARRIOR " << teamToString(team) << "] Low on resources, defensive mode\n";
+        LOG_CHARACTER("[WARRIOR " << teamToString(team) << "] Low on resources, defensive mode\n");
         
         // Only shoot if enemy is very close (defensive only)
         Character* visibleEnemy = findNearestEnemy(allCharacters);
         if (visibleEnemy && position.euclideanDistance(visibleEnemy->getPosition()) <= 3) {
-            std::cout << "[WARRIOR " << teamToString(team) << "] Defensive shot at close enemy\n";
+            LOG_CHARACTER("[WARRIOR " << teamToString(team) << "] Defensive shot at close enemy\n");
             tryShootEnemy(visibleEnemy, map);
         }
         
@@ -54,7 +54,7 @@ void Warrior::update(const Map& map, const std::vector<Character*>& allCharacter
         }
         
         // No defend order but need resources - stay still and wait for help
-        std::cout << "[WARRIOR " << teamToString(team) << "] Waiting for medic/supplier\n";
+        LOG_CHARACTER("[WARRIOR " << teamToString(team) << "] Waiting for medic/supplier\n");
         return;
     }
     

@@ -33,6 +33,7 @@ set(SOURCES
     src/medic.cpp
     src/supplier.cpp
     src/simulation.cpp
+    src/Logger.cpp
 )
 
 # Header files
@@ -46,6 +47,7 @@ set(HEADERS
     include/medic.h
     include/supplier.h
     include/simulation.h
+    include/Logger.h
 )
 
 # Main executable
@@ -70,6 +72,7 @@ add_executable(test_main
     src/medic.cpp
     src/supplier.cpp
     src/simulation.cpp
+    src/Logger.cpp
 )
 
 target_link_libraries(test_main

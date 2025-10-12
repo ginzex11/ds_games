@@ -21,13 +21,13 @@ void Supplier::update(const Map& map, const std::vector<Character*>& allCharacte
     
     // If carrying out resupply order
     if (currentOrder.type == OrderType::RESUPPLY && currentRecipient) {
-        std::cout << "[SUPPLIER " << teamToString(team) << "] Executing RESUPPLY order for " 
+        LOG_CHARACTER("[SUPPLIER " << teamToString(team) << "] Executing RESUPPLY order for " 
                  << teamToString(currentRecipient->getTeam()) << " recipient at (" 
-                 << currentRecipient->getPosition().x << "," << currentRecipient->getPosition().y << ")\n";
+                 << currentRecipient->getPosition().x << "," << currentRecipient->getPosition().y << ")\n");
         
         // SAFETY CHECK: Never resupply enemy team!
         if (currentRecipient->getTeam() != team) {
-            std::cout << "[SUPPLIER " << teamToString(team) << "] ERROR: Assigned to resupply ENEMY! Clearing order.\n";
+            LOG_CHARACTER("[SUPPLIER " << teamToString(team) << "] ERROR: Assigned to resupply ENEMY! Clearing order.\n");
             currentRecipient = nullptr;
             currentOrder = Order();
             returningFromWarehouse = false;
@@ -36,34 +36,34 @@ void Supplier::update(const Map& map, const std::vector<Character*>& allCharacte
         
         if (!currentRecipient->isAlive()) {
             // Recipient died, clear order
-            std::cout << "[SUPPLIER " << teamToString(team) << "] Recipient died, clearing order\n";
+            LOG_CHARACTER("[SUPPLIER " << teamToString(team) << "] Recipient died, clearing order\n");
             currentRecipient = nullptr;
             currentOrder = Order();
             returningFromWarehouse = false;
         } else {
             // Check if adjacent to recipient (within 1 cell)
             float distance = position.manhattanDistance(currentRecipient->getPosition());
-            std::cout << "[SUPPLIER " << teamToString(team) << "] Distance to recipient: " << distance 
+            LOG_CHARACTER("[SUPPLIER " << teamToString(team) << "] Distance to recipient: " << distance 
                      << " | Has ammo: " << (hasAmmo() ? "Yes" : "No")
-                     << " | Supplies: " << ammoSupplies << "\n";
+                     << " | Supplies: " << ammoSupplies << "\n");
             
             if (distance <= 1) {
                 // Adjacent or same cell - can resupply
                 if (hasAmmo()) {
-                    std::cout << "[SUPPLIER " << teamToString(team) << "] Resupplying recipient!\n";
+                    LOG_CHARACTER("[SUPPLIER " << teamToString(team) << "] Resupplying recipient!\n");
                     resupplyRecipient();
                 } else {
-                    std::cout << "[SUPPLIER " << teamToString(team) << "] No ammo, going to warehouse\n";
+                    LOG_CHARACTER("[SUPPLIER " << teamToString(team) << "] No ammo, going to warehouse\n");
                     travelToWarehouse(map);
                 }
             } else if (!hasAmmo() && !returningFromWarehouse) {
                 // Need to get ammo first
-                std::cout << "[SUPPLIER " << teamToString(team) << "] Going to warehouse for supplies\n";
+                LOG_CHARACTER("[SUPPLIER " << teamToString(team) << "] Going to warehouse for supplies\n");
                 travelToWarehouse(map);
             } else {
                 // Have ammo or returning, move towards recipient
-                std::cout << "[SUPPLIER " << teamToString(team) << "] Moving towards recipient at (" 
-                         << currentRecipient->getPosition().x << "," << currentRecipient->getPosition().y << ")\n";
+                LOG_CHARACTER("[SUPPLIER " << teamToString(team) << "] Moving towards recipient at (" 
+                         << currentRecipient->getPosition().x << "," << currentRecipient->getPosition().y << ")\n");
                 travelToRecipient(map);
             }
         }
@@ -75,7 +75,7 @@ void Supplier::update(const Map& map, const std::vector<Character*>& allCharacte
     // Check if reached warehouse
     if (map.isWarehouse(position) && 
         map.getWarehouseType(position) == WarehouseType::AMMO) {
-        std::cout << "[SUPPLIER " << teamToString(team) << "] Reached warehouse, collecting ammo\n";
+        LOG_CHARACTER("[SUPPLIER " << teamToString(team) << "] Reached warehouse, collecting ammo\n");
         collectAmmo();
         returningFromWarehouse = true;
     }

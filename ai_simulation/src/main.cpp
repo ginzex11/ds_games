@@ -1,4 +1,5 @@
 #include "simulation.h"
+#include "Logger.h"
 #include <GL/freeglut.h>
 #include <chrono>
 
@@ -39,40 +40,41 @@ void timerCallback(int value) {
 void keyboardCallback(unsigned char key, int x, int y) {
     if (!globalSimulation) return;
     
-    // Debug: print key code
-    std::cout << "Key pressed: " << (int)key << " ('" << key << "')\n";
+    // Log key press to control log
+    Logger::log(Logger::LogType::CONTROL, "Key pressed: " + std::to_string((int)key) + " ('" + std::string(1, key) + "')");
     
     switch (key) {
         case ' ':  // Space - toggle pause
-            std::cout << "Toggling pause\n";
+            Logger::log(Logger::LogType::CONTROL, "Toggling pause");
             globalSimulation->togglePause();
             break;
         case 'r':  // R - reset
         case 'R':
-            std::cout << "Resetting simulation\n";
+            Logger::log(Logger::LogType::CONTROL, "Resetting simulation");
             globalSimulation->reset();
             break;
         case '+':  // Speed up
         case '=':
-            std::cout << "Speeding up\n";
+            Logger::log(Logger::LogType::CONTROL, "Speeding up");
             globalSimulation->speedUp();
             break;
         case '-':  // Slow down
         case '_':
-            std::cout << "Slowing down\n";
+            Logger::log(Logger::LogType::CONTROL, "Slowing down");
             globalSimulation->slowDown();
             break;
         case 'f':  // F - toggle fog of war
         case 'F':
-            std::cout << "Toggling fog of war\n";
+            Logger::log(Logger::LogType::CONTROL, "Toggling fog of war");
             globalSimulation->toggleFogOfWar();
             break;
         case 27:   // ESC - exit
-            std::cout << "Exiting\n";
+            Logger::log(Logger::LogType::CONTROL, "Exiting application");
+            Logger::shutdown();
             exit(0);
             break;
         default:
-            std::cout << "Unhandled key\n";
+            Logger::log(Logger::LogType::CONTROL, "Unhandled key");
             break;
     }
     
@@ -110,6 +112,10 @@ int main(int argc, char** argv) {
     std::cout << "=================================================\n\n";
     std::cout << "Initializing simulation...\n";
     
+    // Initialize logger (logs will be in ai_simulation/logs/)
+    Logger::initialize("logs");
+    Logger::log(Logger::LogType::CONTROL, "=== Simulation Starting ===");
+    
     // Initialize GLUT
     glutInit(&argc, argv);
     glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGB);
@@ -118,20 +124,25 @@ int main(int argc, char** argv) {
     glutCreateWindow("AI Simulation Game - Team Combat");
     
     std::cout << "Window created successfully.\n";
+    Logger::log(Logger::LogType::CONTROL, "Window created successfully");
     
     // Initialize OpenGL
     initializeOpenGL();
     
     std::cout << "OpenGL initialized.\n";
+    Logger::log(Logger::LogType::CONTROL, "OpenGL initialized");
     
     // Create simulation
     globalSimulation = new Simulation();
     
     std::cout << "Simulation created.\n";
+    Logger::log(Logger::LogType::CONTROL, "Simulation created");
+    
     std::cout << "\nControls:\n";
     std::cout << "  SPACE - Pause/Resume\n";
     std::cout << "  R     - Reset simulation\n";
     std::cout << "  +/-   - Speed up/slow down\n";
+    std::cout << "  F     - Toggle fog of war\n";
     std::cout << "  ESC   - Exit\n\n";
     std::cout << "Game Rules:\n";
     std::cout << "  - Blue team (left) vs Orange team (right)\n";
@@ -143,6 +154,8 @@ int main(int argc, char** argv) {
     std::cout << "  - Eliminate all enemies to win!\n\n";
     std::cout << "Starting simulation...\n\n";
     
+    Logger::log(Logger::LogType::CONTROL, "Starting main game loop");
+    
     // Register callbacks
     glutDisplayFunc(displayCallback);
     glutKeyboardFunc(keyboardCallback);
@@ -153,6 +166,8 @@ int main(int argc, char** argv) {
     glutMainLoop();
     
     // Cleanup
+    Logger::log(Logger::LogType::CONTROL, "=== Simulation Ending ===");
+    Logger::shutdown();
     delete globalSimulation;
     
     return 0;

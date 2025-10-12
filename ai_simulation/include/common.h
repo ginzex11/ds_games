@@ -10,6 +10,21 @@
 #include <cmath>
 #include <algorithm>
 #include <iostream>
+#include <sstream>
+#include "Logger.h"
+
+// Logging macros that support stream-style syntax
+#define LOG_CHARACTER(msg) do { \
+    std::ostringstream oss; \
+    oss << msg; \
+    Logger::log(Logger::LogType::CHARACTER, oss.str()); \
+} while(0)
+
+#define LOG_CONTROL(msg) do { \
+    std::ostringstream oss; \
+    oss << msg; \
+    Logger::log(Logger::LogType::CONTROL, oss.str()); \
+} while(0)
 
 // Forward declarations
 class Character;

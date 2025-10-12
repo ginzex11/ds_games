@@ -95,14 +95,14 @@ void Commander::buildCombinedVisibilityMap(const std::vector<Character*>& teamMe
  * @brief Issue orders to team members
  */
 void Commander::issueOrders(const std::vector<Character*>& teamMembers, const Map& map) {
-    std::cout << "[COMMANDER " << teamToString(team) << "] Issuing orders to team...\n";
+    LOG_CHARACTER("[COMMANDER " << teamToString(team) << "] Issuing orders to team...\n");
     
     for (Character* member : teamMembers) {
         // Only issue new orders if member doesn't have an active order
         if (member->getCurrentOrder().type != OrderType::NONE) {
-            std::cout << "  - " << characterTypeToChar(member->getType()) 
+            LOG_CHARACTER("  - " << characterTypeToChar(member->getType()) 
                      << " already has " << orderTypeToString(member->getCurrentOrder().type) 
-                     << " order, skipping\n";
+                     << " order, skipping\n");
             continue;  // Skip this member - they're already busy
         }
         
@@ -123,12 +123,12 @@ void Commander::issueOrders(const std::vector<Character*>& teamMembers, const Ma
         }
         
         if (order.type != OrderType::NONE) {
-            std::cout << "  - Issuing " << orderTypeToString(order.type) << " order to " 
+            LOG_CHARACTER("  - Issuing " << orderTypeToString(order.type) << " order to " 
                      << characterTypeToChar(member->getType()) << " at (" 
-                     << member->getPosition().x << "," << member->getPosition().y << ")\n";
+                     << member->getPosition().x << "," << member->getPosition().y << ")\n");
             member->executeOrder(order, map);
         } else {
-            std::cout << "  - No order for " << characterTypeToChar(member->getType()) << "\n";
+            LOG_CHARACTER("  - No order for " << characterTypeToChar(member->getType()) << "\n");
         }
     }
 }
@@ -190,9 +190,9 @@ Order Commander::determineMedicOrder(Character* medic, const std::vector<Charact
         if (member->getType() == CharacterType::WARRIOR) {
             Warrior* w = dynamic_cast<Warrior*>(member);
             if (w && w->getNeedsHealing()) {
-                std::cout << "  [Commander] Assigning medic to heal " << teamToString(member->getTeam()) 
+                LOG_CHARACTER("  [Commander] Assigning medic to heal " << teamToString(member->getTeam()) 
                          << " warrior at (" << member->getPosition().x << "," << member->getPosition().y 
-                         << ") with HP:" << member->getHealth() << "\n";
+                         << ") with HP:" << member->getHealth() << "\n");
                 return Order(OrderType::HEAL, member->getPosition(), member);
             }
         }
