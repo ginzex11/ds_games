@@ -17,8 +17,10 @@ class Commander : public Character {
 private:
     std::unordered_map<Position, EnemySighting> combinedEnemyMap;
     std::vector<std::vector<float>> teamSafetyMap;
+    std::unordered_set<Position> teamVisibilityMap;  // Combined visibility from all warriors
     
     void buildCombinedVisibilityMap(const std::vector<Character*>& teamMembers, int currentTurn);
+    void aggregateTeamVisibility(const std::vector<Character*>& teamMembers);
     void issueOrders(const std::vector<Character*>& teamMembers, const Map& map);
     void relocateIfNeeded(const Map& map);
     Order determineWarriorOrder(Character* warrior, const Map& map);
@@ -33,6 +35,15 @@ public:
     
     const std::unordered_map<Position, EnemySighting>& getCombinedEnemyMap() const {
         return combinedEnemyMap;
+    }
+    
+    const std::unordered_set<Position>& getTeamVisibilityMap() const {
+        return teamVisibilityMap;
+    }
+    
+    // Check if team can see a position (commander or any team member)
+    bool teamCanSee(const Position& pos) const {
+        return teamVisibilityMap.count(pos) > 0;
     }
 };
 

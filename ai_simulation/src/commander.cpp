@@ -31,6 +31,9 @@ void Commander::update(const Map& map, const std::vector<Character*>& allCharact
     // Build combined visibility from team reports
     buildCombinedVisibilityMap(teamMembers, currentTurn);
     
+    // Aggregate team visibility (combines all warrior visibility)
+    aggregateTeamVisibility(teamMembers);
+    
     // Generate safety map based on known enemies
     std::vector<Position> enemyPositions;
     for (const auto& pair : combinedEnemyMap) {
@@ -89,6 +92,31 @@ void Commander::buildCombinedVisibilityMap(const std::vector<Character*>& teamMe
             ++it;
         }
     }
+}
+
+/**
+ * @brief Aggregate team visibility from all warriors
+ * This implements the assignment requirement: 
+ * "Commander's visibility map is built as a combination of the visibility maps of each of the soldiers"
+ */
+void Commander::aggregateTeamVisibility(const std::vector<Character*>& teamMembers) {
+    // Start with commander's own visibility
+    teamVisibilityMap = visibleCells;
+    
+    // Add visibility from all team members (especially warriors)
+    for (Character* member : teamMembers) {
+        const std::unordered_set<Position>& memberVision = member->getVisibleCells();
+        
+        // Union: add all positions visible to this team member
+        for (const Position& pos : memberVision) {
+            teamVisibilityMap.insert(pos);
+        }
+    }
+    
+    LOG_CHARACTER("[COMMANDER " << teamToString(team) << "] Team visibility aggregated: " 
+                  << teamVisibilityMap.size() << " cells visible (own: " 
+                  << visibleCells.size() << ", team boost: " 
+                  << (teamVisibilityMap.size() - visibleCells.size()) << ")\n");
 }
 
 /**
