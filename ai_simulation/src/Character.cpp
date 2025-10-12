@@ -45,6 +45,17 @@ void Character::moveAlongPath(const std::vector<Character*>& allCharacters) {
     
     Position nextPos = currentPath[pathIndex];
     
+    // CRITICAL: Validate position is within map bounds
+    if (!isValidPosition(nextPos)) {
+        std::cout << "[" << characterTypeToChar(type) << " " << teamToString(team) 
+                 << "] ERROR: Path contains out-of-bounds position (" 
+                 << nextPos.x << "," << nextPos.y << ")! Clearing invalid path.\n";
+        currentPath.clear();
+        pathIndex = 0;
+        blockedTurns = 0;
+        return;
+    }
+    
     // Check if next position is occupied by another character
     bool occupied = false;
     Character* blocker = nullptr;
