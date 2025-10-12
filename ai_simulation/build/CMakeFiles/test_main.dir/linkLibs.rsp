@@ -1,1 +1,0 @@
-  -L"E:/Afeka/ds games/ai_simulation/../third_party/freeglut/lib"  -lopengl32 -lglu32 -lfreeglut -lopengl32 -lglu32 -lfreeglut -lkernel32 -luser32 -lgdi32 -lwinspool -lshell32 -lole32 -loleaut32 -luuid -lcomdlg32 -ladvapi32 
