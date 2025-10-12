@@ -123,7 +123,20 @@ void Warrior::update(const Map& map, const std::vector<Character*>& allCharacter
     } else if (currentOrder.type == OrderType::NONE) {
         // No orders - engage enemies autonomously if visible
         if (visibleEnemy) {
-            tryShootEnemy(visibleEnemy, map);
+            float distance = position.euclideanDistance(visibleEnemy->getPosition());
+            
+            if (distance <= SHOOT_RANGE) {
+                // In range - shoot
+                tryShootEnemy(visibleEnemy, map);
+            } else {
+                // Out of range - move closer
+                Position enemyPos = visibleEnemy->getPosition();
+                if (currentPath.empty() || currentPath.back() != enemyPos) {
+                    LOG_CHARACTER("[WARRIOR " << teamToString(team) << "] Enemy spotted out of range, moving to engage\n");
+                    currentPath = AI::findPath(position, enemyPos, map);
+                    pathIndex = 0;
+                }
+            }
         }
     }
     
