@@ -5,6 +5,20 @@
 *.ilk
 *.log
 *.tlog
+*.txt
+
+# Build directories
+build/
+*/build/
+
+# Third party libraries
+third_party/
+
+# CMake files
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
 
 # Debug directories
 Debug/
@@ -40,4 +54,17 @@ Desktop.ini
 
 # IDE files
 *.swp
-*.swo
+
+# Build directories
+build/
+*/build/
+
+# Third party libraries
+third_party/
+
+# CMake generated files
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+*.txt
