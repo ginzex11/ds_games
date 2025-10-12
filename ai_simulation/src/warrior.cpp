@@ -106,14 +106,14 @@ void Warrior::update(const Map& map, const std::vector<Character*>& allCharacter
             currentOrder = Order();
         }
     } else if (currentOrder.type == OrderType::MOVE) {
-        // If we see an enemy while moving, engage them immediately!
-        if (visibleEnemy && !enemySightings.empty()) {
-            // Clear move order and let commander issue attack order next turn
+        // If path is empty or complete, clear the order so commander can issue a new one
+        if (currentPath.empty()) {
+            LOG_CHARACTER("[WARRIOR " << teamToString(team) << "] MOVE order path empty, clearing order\n");
+            currentOrder = Order();
+        } else if (visibleEnemy && !enemySightings.empty()) {
+            // If we see an enemy while moving, engage them immediately!
             currentOrder = Order();
             tryShootEnemy(visibleEnemy, map);
-        } else if (currentPath.empty()) {
-            // Move order complete
-            currentOrder = Order();
         }
     } else if (currentOrder.type == OrderType::NONE) {
         // No orders - engage enemies autonomously if visible
@@ -268,8 +268,16 @@ void Warrior::executeDefendOrder(const Map& map, const std::vector<Character*>& 
  */
 void Warrior::executeMoveOrder(const Map& map) {
     if (currentPath.empty()) {
+        LOG_CHARACTER("[WARRIOR " << teamToString(team) << "] Calculating path for MOVE order to (" 
+                 << currentOrder.targetPosition.x << "," << currentOrder.targetPosition.y << ")\n");
         currentPath = AI::findPath(position, currentOrder.targetPosition, map);
         pathIndex = 0;
+        
+        if (currentPath.empty()) {
+            LOG_CHARACTER("[WARRIOR " << teamToString(team) << "] WARNING: No path found for MOVE order!\n");
+        } else {
+            LOG_CHARACTER("[WARRIOR " << teamToString(team) << "] Path found with " << currentPath.size() << " steps\n");
+        }
     }
 }
 
