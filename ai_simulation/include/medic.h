@@ -20,7 +20,7 @@ private:
     
     void travelToWarehouse(const Map& map, const std::vector<std::vector<float>>& safetyMap);
     void travelToPatient(const Map& map, const std::vector<std::vector<float>>& safetyMap);
-    void healPatient();
+    void healPatient(Map& map);  // Now takes map to check patient needs
     
 public:
     Medic(Position pos, Team t);
@@ -29,7 +29,7 @@ public:
     void executeOrder(Order order, const Map& map) override;
     
     bool hasMedicine() const { return medicineSupplies > 0; }
-    void collectMedicine() { medicineSupplies++; }
+    void collectMedicine(Map& map);  // Now takes from warehouse inventory
     int getMedicineSupplies() const { return medicineSupplies; }  // Get current medicine count for UI
     Character* getCurrentPatient() const { return currentPatient; }  // For commander to check assignment
 };

@@ -20,7 +20,7 @@ private:
     
     void travelToWarehouse(const Map& map, const std::vector<std::vector<float>>& safetyMap);
     void travelToRecipient(const Map& map, const std::vector<std::vector<float>>& safetyMap);
-    void resupplyRecipient();
+    void resupplyRecipient(Map& map);  // Now takes map to check warrior needs
     
 public:
     Supplier(Position pos, Team t);
@@ -29,7 +29,7 @@ public:
     void executeOrder(Order order, const Map& map) override;
     
     bool hasAmmo() const { return ammoSupplies > 0; }
-    void collectAmmo() { ammoSupplies++; }
+    void collectAmmo(Map& map);  // Now takes from warehouse inventory
     int getAmmoSupplies() const { return ammoSupplies; }  // Get current ammo supply count for UI
 };
 

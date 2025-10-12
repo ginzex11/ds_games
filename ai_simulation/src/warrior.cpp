@@ -7,7 +7,8 @@ Warrior::Warrior(Position pos, Team t)
     : Character(pos, t, CharacterType::WARRIOR),
       ammo(INITIAL_AMMO), grenades(INITIAL_GRENADES),
       needsAmmo(false), needsHealing(false), isRetreating(false), 
-      retreatTarget(pos), lastLoggedTurn(-1) {
+      retreatTarget(pos), previousPosition(pos), failedDestination(-1, -1), 
+      failedAttempts(0), turnsSinceLastMove(0), lastLoggedTurn(-1) {
 }
 
 /**
@@ -80,11 +81,53 @@ void Warrior::update(const Map& map, const std::vector<Character*>& allCharacter
                     currentPath.clear();
                     pathIndex = 0;
                 } else {
-                    // Support far away - move closer
+                    // Support far away - move closer, but path to NEAR support (not exact position)
+                    // This prevents multiple warriors from bunching up at the same destination
                     Position supportPos = supportUnit->getPosition();
+                    
+                    // Find a position NEAR the support unit instead of exact position
+                    Position targetPos = supportPos;
+                    if (distance > 3) {
+                        // If far away, just get closer (path towards them)
+                        targetPos = supportPos;
+                    } else {
+                        // If close, find adjacent free cell to avoid bunching
+                        std::vector<Position> adjacentCells = {
+                            Position(supportPos.x + 1, supportPos.y),
+                            Position(supportPos.x - 1, supportPos.y),
+                            Position(supportPos.x, supportPos.y + 1),
+                            Position(supportPos.x, supportPos.y - 1)
+                        };
+                        
+                        // Find first free adjacent cell
+                        bool foundFree = false;
+                        for (const Position& adj : adjacentCells) {
+                            if (!isValidPosition(adj) || !map.isPassable(adj)) continue;
+                            
+                            bool occupied = false;
+                            for (Character* c : allCharacters) {
+                                if (c != this && c->isAlive() && c->getPosition() == adj) {
+                                    occupied = true;
+                                    break;
+                                }
+                            }
+                            
+                            if (!occupied) {
+                                targetPos = adj;
+                                foundFree = true;
+                                break;
+                            }
+                        }
+                        
+                        // If all adjacent cells occupied, just path to support and wait
+                        if (!foundFree) {
+                            targetPos = supportPos;
+                        }
+                    }
+                    
                     bool needsNewPath = currentPath.empty() || 
                                        pathIndex >= static_cast<int>(currentPath.size()) ||
-                                       currentPath.back() != supportPos;
+                                       currentPath.back() != targetPos;
                     
                     if (needsNewPath) {
                         LOG_CHARACTER("[WARRIOR " << teamToString(team) << "] Moving towards " 
@@ -99,11 +142,11 @@ void Warrior::update(const Map& map, const std::vector<Character*>& allCharacter
                             }
                         }
                         auto safetyMap = AI::generateSafetyMap(enemyPos, map);
-                        currentPath = AI::findPath(position, supportPos, map, &safetyMap, 0.05f);
+                        currentPath = AI::findPath(position, targetPos, map, &safetyMap, 0.05f);
                         
                         if (currentPath.empty()) {
                             // Fallback - direct path
-                            currentPath = AI::findPath(position, supportPos, map);
+                            currentPath = AI::findPath(position, targetPos, map);
                         }
                         
                         pathIndex = 0;
@@ -128,11 +171,54 @@ void Warrior::update(const Map& map, const std::vector<Character*>& allCharacter
     // Check for visible enemies
     Character* visibleEnemy = findNearestEnemy(allCharacters);
     
+    // UNIVERSAL GRENADE LOGIC: Check grenades BEFORE order execution
+    // Grenades are a weapon that works even when out of bullets!
+    if (visibleEnemy && grenades > 0) {
+        Position enemyPos = visibleEnemy->getPosition();
+        float distance = position.euclideanDistance(enemyPos);
+        
+        // Only consider grenades if enemy is in grenade range
+        if (distance <= GRENADE_RANGE) {
+            // Count how many enemies would be hit by grenade at this position
+            int enemiesInBlastRadius = 0;
+            for (Character* c : allCharacters) {
+                if (!c->isAlive() || c->getTeam() == team) continue;
+                float distToBlast = c->getPosition().euclideanDistance(enemyPos);
+                if (distToBlast <= GRENADE_RADIUS) {
+                    enemiesInBlastRadius++;
+                }
+            }
+            
+            // Use grenade if: 2+ enemies in blast OR only 1 enemy but out of bullets
+            if (enemiesInBlastRadius >= 2 || (enemiesInBlastRadius >= 1 && ammo == 0)) {
+                LOG_CHARACTER("[WARRIOR " << teamToString(team) << "] Throwing GRENADE at (" 
+                         << enemyPos.x << "," << enemyPos.y 
+                         << ") - " << enemiesInBlastRadius << " enemies in blast!"
+                         << (ammo == 0 ? " [OUT OF BULLETS]" : "") << "\n");
+                
+                // Need mutable copy for grenade
+                std::vector<Character*> mutableChars = allCharacters;
+                if (tryThrowGrenade(enemyPos, map, mutableChars)) {
+                    return;  // Grenade thrown, skip other actions this turn
+                }
+            }
+        }
+    }
+    
+    // CRITICAL: If completely out of ammo (0), cannot attack - switch to defensive posture
+    if (ammo == 0 && currentOrder.type == OrderType::ATTACK) {
+        LOG_CHARACTER("[WARRIOR " << teamToString(team) << "] OUT OF AMMO! Switching to DEFEND mode\n");
+        currentOrder = Order(OrderType::DEFEND, position);
+        currentPath.clear();
+        pathIndex = 0;
+        needsAmmo = true;  // Ensure commander knows we need resupply
+    }
+    
     // Execute current order based on type
     if (currentOrder.type == OrderType::ATTACK) {
         executeAttackOrder(map, allCharacters);
         
-        // Try to shoot if enemy is visible
+        // Try to shoot if enemy is visible (normal single-target attack)
         if (visibleEnemy) {
             tryShootEnemy(visibleEnemy, map);
         }
@@ -161,47 +247,47 @@ void Warrior::update(const Map& map, const std::vector<Character*>& allCharacter
             currentOrder = Order();
         }
     } else if (currentOrder.type == OrderType::MOVE) {
+        // OSCILLATION DETECTION: If we haven't moved for 3+ turns, we're stuck
+        if (position == previousPosition) {
+            turnsSinceLastMove++;
+            
+            // Only detect oscillation after being stuck for 3 consecutive turns
+            if (turnsSinceLastMove >= 3) {
+                LOG_CHARACTER("[WARRIOR " << teamToString(team) << "] OSCILLATION DETECTED! Stuck for " 
+                         << turnsSinceLastMove << " turns. Marking destination as unreachable\n");
+                
+                // Mark the destination as failed so we don't try again
+                if (!currentPath.empty()) {
+                    failedDestination = currentPath.back();
+                    failedAttempts = 10;  // Ignore this destination for 10 turns
+                }
+                
+                currentOrder = Order();
+                currentPath.clear();
+                pathIndex = 0;
+                turnsSinceLastMove = 0;
+                return;  // Stop trying to move
+            }
+        } else {
+            // We moved! Reset counter
+            turnsSinceLastMove = 0;
+        }
+        
         // If path is empty, calculate it with safety map
         if (currentPath.empty()) {
             executeMoveOrder(map, allCharacters);
             
-            // If path still empty after calculation, try to find ANY adjacent free cell to escape
+            // If path still empty after calculation, the destination is unreachable
             if (currentPath.empty()) {
-                LOG_CHARACTER("[WARRIOR " << teamToString(team) << "] MOVE order path empty, trying to find escape route\n");
+                LOG_CHARACTER("[WARRIOR " << teamToString(team) << "] Cannot find path to MOVE destination. Clearing order.\n");
                 
-                // Try to move to any adjacent passable cell that's not occupied
-                std::vector<Position> neighbors = {
-                    Position(position.x + 1, position.y),
-                    Position(position.x - 1, position.y),
-                    Position(position.x, position.y + 1),
-                    Position(position.x, position.y - 1)
-                };
+                // Mark this destination as failed
+                failedDestination = currentOrder.targetPosition;
+                failedAttempts = 10;  // Don't try this destination for 10 turns
                 
-                for (const Position& neighbor : neighbors) {
-                    if (isValidPosition(neighbor) && map.isPassable(neighbor)) {
-                        // Check if not occupied
-                        bool occupied = false;
-                        for (Character* c : allCharacters) {
-                            if (c != this && c->isAlive() && c->getPosition() == neighbor) {
-                                occupied = true;
-                                break;
-                            }
-                        }
-                        
-                        if (!occupied) {
-                            LOG_CHARACTER("[WARRIOR " << teamToString(team) << "] Found escape cell, moving to adjacent position\n");
-                            currentPath = {neighbor};
-                            pathIndex = 0;
-                            break;
-                        }
-                    }
-                }
-                
-                // If still no path, clear order and wait
-                if (currentPath.empty()) {
-                    LOG_CHARACTER("[WARRIOR " << teamToString(team) << "] Completely stuck, clearing MOVE order\n");
-                    currentOrder = Order();
-                }
+                // Clear the MOVE order - don't wander aimlessly!
+                currentOrder = Order();
+                turnsSinceLastMove = 0;
             }
         } else if (visibleEnemy && !enemySightings.empty()) {
             // If we see an enemy while moving, engage them immediately!
@@ -228,6 +314,9 @@ void Warrior::update(const Map& map, const std::vector<Character*>& allCharacter
         }
     }
     
+    // Track position before moving (for oscillation detection)
+    previousPosition = position;
+    
     // Move along current path
     moveAlongPath(allCharacters);
 }
@@ -236,6 +325,23 @@ void Warrior::update(const Map& map, const std::vector<Character*>& allCharacter
  * @brief Execute order from commander
  */
 void Warrior::executeOrder(Order order, const Map& map) {
+    // Decrement failed attempts counter
+    if (failedAttempts > 0) {
+        failedAttempts--;
+        if (failedAttempts == 0) {
+            failedDestination = Position(-1, -1);  // Clear failed destination
+        }
+    }
+    
+    // Reject MOVE orders to destinations we recently failed to reach
+    if (order.type == OrderType::MOVE && failedAttempts > 0) {
+        if (order.targetPosition == failedDestination) {
+            LOG_CHARACTER("[WARRIOR " << teamToString(team) << "] Rejecting MOVE order to unreachable destination (" 
+                     << order.targetPosition.x << "," << order.targetPosition.y << ")\n");
+            return;  // Don't accept this order
+        }
+    }
+    
     currentOrder = order;
     
     // Create mutable copy of allCharacters for grenade throwing
@@ -295,8 +401,11 @@ bool Warrior::tryThrowGrenade(const Position& target, const Map& map, std::vecto
     // Check if in range
     if (distance <= GRENADE_RANGE) {
         grenades--;
+        LOG_CHARACTER("[WARRIOR " << teamToString(team) << "] GRENADE EXPLODES at (" 
+                 << target.x << "," << target.y << ")!\n");
         
         // Apply area damage
+        int hitCount = 0;
         for (Character* c : allCharacters) {
             if (!c->isAlive()) continue;
             
@@ -305,8 +414,14 @@ bool Warrior::tryThrowGrenade(const Position& target, const Map& map, std::vecto
                 // Damage decreases with distance from epicenter
                 int damage = static_cast<int>(GRENADE_DAMAGE * (1.0f - distToTarget / GRENADE_RADIUS));
                 c->takeDamage(damage);
+                hitCount++;
+                LOG_CHARACTER("[WARRIOR " << teamToString(team) << "] Grenade damages " 
+                         << characterTypeToString(c->getType()) << " " 
+                         << teamToString(c->getTeam()) 
+                         << " for " << damage << " damage (dist: " << distToTarget << ")\n");
             }
         }
+        LOG_CHARACTER("[WARRIOR " << teamToString(team) << "] Grenade hit " << hitCount << " targets\n");
         return true;
     }
     
@@ -394,6 +509,33 @@ void Warrior::executeMoveOrder(const Map& map, const std::vector<Character*>& al
         if (currentPath.empty()) {
             LOG_CHARACTER("[WARRIOR " << teamToString(team) << "] No safe path found, trying direct path\n");
             currentPath = AI::findPath(position, currentOrder.targetPosition, map);
+        }
+        
+        // If still no path, try positions near the destination
+        if (currentPath.empty()) {
+            LOG_CHARACTER("[WARRIOR " << teamToString(team) << "] Direct path failed, trying nearby positions\n");
+            
+            // Try positions around the target
+            std::vector<Position> nearbyTargets = {
+                currentOrder.targetPosition,
+                Position(currentOrder.targetPosition.x + 1, currentOrder.targetPosition.y),
+                Position(currentOrder.targetPosition.x - 1, currentOrder.targetPosition.y),
+                Position(currentOrder.targetPosition.x, currentOrder.targetPosition.y + 1),
+                Position(currentOrder.targetPosition.x, currentOrder.targetPosition.y - 1),
+                Position(currentOrder.targetPosition.x + 1, currentOrder.targetPosition.y + 1),
+                Position(currentOrder.targetPosition.x - 1, currentOrder.targetPosition.y - 1)
+            };
+            
+            for (const Position& nearbyTarget : nearbyTargets) {
+                if (isValidPosition(nearbyTarget) && map.isPassable(nearbyTarget)) {
+                    currentPath = AI::findPath(position, nearbyTarget, map);
+                    if (!currentPath.empty()) {
+                        LOG_CHARACTER("[WARRIOR " << teamToString(team) << "] Found path to nearby position (" 
+                                 << nearbyTarget.x << "," << nearbyTarget.y << ")\n");
+                        break;
+                    }
+                }
+            }
         }
         
         pathIndex = 0;
@@ -531,4 +673,35 @@ void Warrior::executeRetreat(const Map& map, const std::vector<Character*>& allC
     // Move along retreat path
     // Note: moveAlongPath checks for friendly units blocking, we'll handle that
     moveAlongPath(allCharacters);
+}
+
+/**
+ * @brief Resupply warrior with ammo and grenades (prevents overflow)
+ */
+void Warrior::resupplyAmmo(int ammoAmount, int grenadeAmount) {
+    ammo += ammoAmount;
+    if (ammo > INITIAL_AMMO) ammo = INITIAL_AMMO;  // Cap at max
+    
+    grenades += grenadeAmount;
+    if (grenades > INITIAL_GRENADES) grenades = INITIAL_GRENADES;  // Cap at max
+    
+    needsAmmo = false;
+    
+    LOG_CHARACTER("[WARRIOR " << teamToString(team) << "] Resupplied: +" << ammoAmount 
+             << " ammo, +" << grenadeAmount << " grenades (now " << ammo << "/" 
+             << INITIAL_AMMO << " ammo, " << grenades << "/" << INITIAL_GRENADES << " grenades)\n");
+}
+
+/**
+ * @brief Heal warrior (prevents overflow)
+ */
+void Warrior::heal(int amount) {
+    int oldHealth = health;
+    health += amount;
+    if (health > INITIAL_HEALTH) health = INITIAL_HEALTH;  // Cap at max
+    
+    needsHealing = false;
+    
+    LOG_CHARACTER("[WARRIOR " << teamToString(team) << "] Healed: +" << (health - oldHealth) 
+             << " HP (now " << health << "/" << INITIAL_HEALTH << ")\n");
 }

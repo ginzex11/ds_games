@@ -103,51 +103,52 @@ void Supplier::update(const Map& map, const std::vector<Character*>& allCharacte
         if (!hasAmmo() && !returningFromWarehouse) {
             LOG_CHARACTER("[SUPPLIER " << teamToString(team) << "] No ammo! Going to warehouse before recipient\n");
             travelToWarehouse(map, safetyMap);
-            return;  // Don't travel to recipient yet
-        }
-        
-        // Have ammo or returning from warehouse - now handle recipient
-        // Check if close enough to recipient (within 2 cells - manhattan distance)
-        float distance = position.manhattanDistance(currentRecipient->getPosition());
-        LOG_CHARACTER("[SUPPLIER " << teamToString(team) << "] Distance to recipient: " << distance 
-                 << " | Has ammo: " << (hasAmmo() ? "Yes" : "No")
-                 << " | Supplies: " << ammoSupplies << "\n");
-        
-        if (distance <= 2) {
-            // Close enough - can resupply (allows diagonal adjacency)
-            if (hasAmmo()) {
-                LOG_CHARACTER("[SUPPLIER " << teamToString(team) << "] Resupplying recipient!\n");
-                resupplyRecipient();
-            } else {
-                LOG_CHARACTER("[SUPPLIER " << teamToString(team) << "] At recipient but no ammo, going to warehouse\n");
-                travelToWarehouse(map, safetyMap);
-            }
+            // Let moveAlongPath() execute below to actually move towards warehouse
         } else {
-            // Have ammo or returning, move towards recipient
-            Position recipientPos = currentRecipient->getPosition();
+            // Have ammo or returning from warehouse - now handle recipient
+            // Check if close enough to recipient (within 2 cells - manhattan distance)
+            float distance = position.manhattanDistance(currentRecipient->getPosition());
+            LOG_CHARACTER("[SUPPLIER " << teamToString(team) << "] Distance to recipient: " << distance 
+                     << " | Has ammo: " << (hasAmmo() ? "Yes" : "No")
+                     << " | Supplies: " << ammoSupplies << "\n");
             
-            // Update path if recipient has moved significantly
-            // or if we have no path or path is nearly complete
-            bool needsNewPath = currentPath.empty() || 
-                               pathIndex >= static_cast<int>(currentPath.size()) - 2;
-            
-            // Check if recipient moved from our target
-            if (!needsNewPath && !currentPath.empty()) {
-                Position currentTarget = currentPath[currentPath.size() - 1];
-                if (currentTarget != recipientPos) {
-                    needsNewPath = true;
-                    LOG_CHARACTER("[SUPPLIER " << teamToString(team) << "] Recipient moved! Recalculating path\n");
+            if (distance <= 2) {
+                // Close enough - can resupply (allows diagonal adjacency)
+                if (hasAmmo()) {
+                    LOG_CHARACTER("[SUPPLIER " << teamToString(team) << "] Resupplying recipient!\n");
+                    Map& mutableMap = const_cast<Map&>(map);
+                    resupplyRecipient(mutableMap);
+                } else {
+                    LOG_CHARACTER("[SUPPLIER " << teamToString(team) << "] At recipient but no ammo, going to warehouse\n");
+                    travelToWarehouse(map, safetyMap);
                 }
-            }
-            
-            if (needsNewPath) {
-                LOG_CHARACTER("[SUPPLIER " << teamToString(team) << "] Moving towards recipient at (" 
-                         << recipientPos.x << "," << recipientPos.y << ")"
-                         << " | Recalculating path\n");
-                travelToRecipient(map, safetyMap);
             } else {
-                LOG_CHARACTER("[SUPPLIER " << teamToString(team) << "] Following existing path to recipient"
-                         << " | Path size: " << currentPath.size() << " | PathIndex: " << pathIndex << "\n");
+                // Have ammo or returning, move towards recipient
+                Position recipientPos = currentRecipient->getPosition();
+                
+                // Update path if recipient has moved significantly
+                // or if we have no path or path is nearly complete
+                bool needsNewPath = currentPath.empty() || 
+                                   pathIndex >= static_cast<int>(currentPath.size()) - 2;
+                
+                // Check if recipient moved from our target
+                if (!needsNewPath && !currentPath.empty()) {
+                    Position currentTarget = currentPath[currentPath.size() - 1];
+                    if (currentTarget != recipientPos) {
+                        needsNewPath = true;
+                        LOG_CHARACTER("[SUPPLIER " << teamToString(team) << "] Recipient moved! Recalculating path\n");
+                    }
+                }
+                
+                if (needsNewPath) {
+                    LOG_CHARACTER("[SUPPLIER " << teamToString(team) << "] Moving towards recipient at (" 
+                             << recipientPos.x << "," << recipientPos.y << ")"
+                             << " | Recalculating path\n");
+                    travelToRecipient(map, safetyMap);
+                } else {
+                    LOG_CHARACTER("[SUPPLIER " << teamToString(team) << "] Following existing path to recipient"
+                             << " | Path size: " << currentPath.size() << " | PathIndex: " << pathIndex << "\n");
+                }
             }
         }
     }
@@ -155,12 +156,33 @@ void Supplier::update(const Map& map, const std::vector<Character*>& allCharacte
     // Move along path
     moveAlongPath(allCharacters);
     
-    // Check if reached warehouse
+    // Check if reached warehouse (only trigger ONCE when first arriving)
     if (map.isWarehouse(position) && 
-        map.getWarehouseType(position) == WarehouseType::AMMO) {
+        map.getWarehouseType(position) == WarehouseType::AMMO &&
+        !returningFromWarehouse) {
         LOG_CHARACTER("[SUPPLIER " << teamToString(team) << "] Reached warehouse, collecting ammo\n");
-        collectAmmo();
+        
+        // Need mutable copy of map
+        Map& mutableMap = const_cast<Map&>(map);
+        collectAmmo(mutableMap);
         returningFromWarehouse = true;
+        
+        // Clear current path to force recalculation
+        currentPath.clear();
+        pathIndex = 0;
+        
+        // Immediately set path to recipient
+        if (currentRecipient) {
+            LOG_CHARACTER("[SUPPLIER " << teamToString(team) << "] Got supplies! Heading to recipient now\n");
+            travelToRecipient(map, safetyMap);
+            
+            // CRITICAL: Skip first position if it's our current position (warehouse)
+            // This ensures we actually LEAVE the warehouse instead of staying stuck
+            if (!currentPath.empty() && currentPath[0] == position) {
+                LOG_CHARACTER("[SUPPLIER " << teamToString(team) << "] Skipping warehouse position in path\n");
+                pathIndex = 1;  // Start from next position
+            }
+        }
     }
 }
 
@@ -196,21 +218,18 @@ void Supplier::travelToWarehouse(const Map& map, const std::vector<std::vector<f
     
     // Only recalculate if we don't have a path or it's been cleared
     if (currentPath.empty() || pathIndex >= static_cast<int>(currentPath.size())) {
-        LOG_CHARACTER("[SUPPLIER " << teamToString(team) << "] Calculating path to warehouse at (" 
-                 << warehouse.x << "," << warehouse.y << ") using safety map\n");
-        // Use lower safety weight for support units to ensure they can reach warehouses
-        currentPath = AI::findPath(position, warehouse, map, &safetyMap, 0.1f);
+        LOG_CHARACTER("[SUPPLIER " << teamToString(team) << "] Calculating DIRECT path to warehouse at (" 
+                 << warehouse.x << "," << warehouse.y << ") - ignoring safety\n");
         
-        // Fallback: If no safe path, try direct path (suppliers must reach warehouse!)
-        if (currentPath.empty()) {
-            LOG_CHARACTER("[SUPPLIER " << teamToString(team) << "] No safe path, trying direct route\n");
-            currentPath = AI::findPath(position, warehouse, map);
-        }
+        // CRITICAL: Support units MUST reach warehouses - use direct path with NO safety weight
+        currentPath = AI::findPath(position, warehouse, map);
         
         pathIndex = 0;
         
         if (currentPath.empty()) {
-            LOG_CHARACTER("[SUPPLIER " << teamToString(team) << "] WARNING: No path to warehouse found!\n");
+            LOG_CHARACTER("[SUPPLIER " << teamToString(team) << "] ERROR: No path to warehouse found!\n");
+        } else {
+            LOG_CHARACTER("[SUPPLIER " << teamToString(team) << "] Warehouse path: " << currentPath.size() << " cells\n");
         }
     }
 }
@@ -222,35 +241,85 @@ void Supplier::travelToRecipient(const Map& map, const std::vector<std::vector<f
     if (!currentRecipient) return;
     
     Position recipientPos = currentRecipient->getPosition();
-    LOG_CHARACTER("[SUPPLIER " << teamToString(team) << "] Calculating path to recipient at (" 
-             << recipientPos.x << "," << recipientPos.y << ") using safety map\n");
-    // Use lower safety weight for support units to ensure they can reach targets
-    currentPath = AI::findPath(position, recipientPos, map, &safetyMap, 0.1f);
+    LOG_CHARACTER("[SUPPLIER " << teamToString(team) << "] Calculating DIRECT path to recipient at (" 
+             << recipientPos.x << "," << recipientPos.y << ") - prioritizing speed\n");
     
-    // Fallback: If no safe path, try direct path (suppliers must reach warriors!)
-    if (currentPath.empty()) {
-        LOG_CHARACTER("[SUPPLIER " << teamToString(team) << "] No safe path, trying direct route\n");
-        currentPath = AI::findPath(position, recipientPos, map);
-    }
+    // CRITICAL: Support units MUST reach warriors - use direct path with NO safety weight
+    currentPath = AI::findPath(position, recipientPos, map);
     
     pathIndex = 0;
+    
+    if (currentPath.empty()) {
+        LOG_CHARACTER("[SUPPLIER " << teamToString(team) << "] ERROR: No path to recipient found!\n");
+    } else {
+        LOG_CHARACTER("[SUPPLIER " << teamToString(team) << "] Recipient path: " << currentPath.size() << " cells\n");
+    }
 }
 
 /**
  * @brief Resupply the current recipient
  */
-void Supplier::resupplyRecipient() {
+void Supplier::resupplyRecipient(Map& map) {
     if (!currentRecipient || ammoSupplies <= 0) return;
     
     // Resupply warrior
     Warrior* warrior = dynamic_cast<Warrior*>(currentRecipient);
     if (warrior) {
-        warrior->resupplyAmmo(WAREHOUSE_RESUPPLY_AMOUNT);
-        ammoSupplies--;
+        // Calculate how much warrior needs
+        int ammoNeeded = warrior->getAmmoNeeded();
+        int grenadesNeeded = warrior->getGrenadesNeeded();
+        
+        LOG_CHARACTER("[SUPPLIER " << teamToString(team) << "] Warrior needs: " 
+                 << ammoNeeded << " ammo, " << grenadesNeeded << " grenades\n");
+        
+        // Try to take from warehouse inventory
+        int ammoToGive = 0;
+        int grenadesToGive = 0;
+        
+        if (map.takeAmmo(team, ammoNeeded)) {
+            ammoToGive = ammoNeeded;
+        } else {
+            // Give whatever is available
+            int available = map.getAmmoInventory(team);
+            if (map.takeAmmo(team, available)) {
+                ammoToGive = available;
+            }
+        }
+        
+        if (map.takeGrenades(team, grenadesNeeded)) {
+            grenadesToGive = grenadesNeeded;
+        } else {
+            // Give whatever is available
+            int available = map.getGrenadeInventory(team);
+            if (map.takeGrenades(team, available)) {
+                grenadesToGive = available;
+            }
+        }
+        
+        // Resupply warrior with what we got
+        warrior->resupplyAmmo(ammoToGive, grenadesToGive);
+        ammoSupplies--;  // Used one supply pack
+        
+        LOG_CHARACTER("[SUPPLIER " << teamToString(team) << "] Gave " << ammoToGive 
+                 << " ammo, " << grenadesToGive << " grenades. Warehouse now has: " 
+                 << map.getAmmoInventory(team) << " ammo, " 
+                 << map.getGrenadeInventory(team) << " grenades\n");
         
         // Clear order
         currentRecipient = nullptr;
         currentOrder = Order();
         returningFromWarehouse = false;
     }
+}
+
+/**
+ * @brief Collect ammo supplies from warehouse
+ */
+void Supplier::collectAmmo(Map& map) {
+    // Supplier just picks up a "supply pack" - doesn't take specific amounts yet
+    ammoSupplies++;
+    LOG_CHARACTER("[SUPPLIER " << teamToString(team) << "] Collected supply pack (now has " 
+             << ammoSupplies << " packs). Warehouse inventory: " 
+             << map.getAmmoInventory(team) << " ammo, " 
+             << map.getGrenadeInventory(team) << " grenades\n");
 }

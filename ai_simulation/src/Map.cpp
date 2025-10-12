@@ -9,6 +9,16 @@ Map::Map() {
     // Initialize grid with empty cells
     grid.resize(GRID_HEIGHT, std::vector<Cell>(GRID_WIDTH));
     
+    // Initialize warehouse inventories
+    // Each warehouse starts with enough supplies for multiple resupplies
+    blueAmmoInventory.ammo = 100;      // 100 bullets
+    blueAmmoInventory.grenades = 20;   // 20 grenades
+    blueMedicineInventory.medicine = 50; // 50 medicine units
+    
+    orangeAmmoInventory.ammo = 100;
+    orangeAmmoInventory.grenades = 20;
+    orangeMedicineInventory.medicine = 50;
+    
     // Generate map features
     generateObstacles();
     placeWarehouses();
@@ -218,11 +228,80 @@ Team Map::getWarehouseTeam(const Position& pos) const {
 }
 
 /**
+ * @brief Try to take ammo from warehouse inventory
+ */
+bool Map::takeAmmo(Team team, int amount) {
+    WarehouseInventory& inventory = (team == Team::BLUE) ? blueAmmoInventory : orangeAmmoInventory;
+    
+    if (inventory.ammo >= amount) {
+        inventory.ammo -= amount;
+        return true;
+    }
+    return false;  // Not enough ammo
+}
+
+/**
+ * @brief Try to take grenades from warehouse inventory
+ */
+bool Map::takeGrenades(Team team, int amount) {
+    WarehouseInventory& inventory = (team == Team::BLUE) ? blueAmmoInventory : orangeAmmoInventory;
+    
+    if (inventory.grenades >= amount) {
+        inventory.grenades -= amount;
+        return true;
+    }
+    return false;  // Not enough grenades
+}
+
+/**
+ * @brief Try to take medicine from warehouse inventory
+ */
+bool Map::takeMedicine(Team team, int amount) {
+    WarehouseInventory& inventory = (team == Team::BLUE) ? blueMedicineInventory : orangeMedicineInventory;
+    
+    if (inventory.medicine >= amount) {
+        inventory.medicine -= amount;
+        return true;
+    }
+    return false;  // Not enough medicine
+}
+
+/**
+ * @brief Get current ammo inventory
+ */
+int Map::getAmmoInventory(Team team) const {
+    return (team == Team::BLUE) ? blueAmmoInventory.ammo : orangeAmmoInventory.ammo;
+}
+
+/**
+ * @brief Get current grenade inventory
+ */
+int Map::getGrenadeInventory(Team team) const {
+    return (team == Team::BLUE) ? blueAmmoInventory.grenades : orangeAmmoInventory.grenades;
+}
+
+/**
+ * @brief Get current medicine inventory
+ */
+int Map::getMedicineInventory(Team team) const {
+    return (team == Team::BLUE) ? blueMedicineInventory.medicine : orangeMedicineInventory.medicine;
+}
+
+/**
  * @brief Reset the map to initial state
  */
 void Map::reset() {
     grid.clear();
     grid.resize(GRID_HEIGHT, std::vector<Cell>(GRID_WIDTH));
+    
+    // Reset inventories
+    blueAmmoInventory.ammo = 100;
+    blueAmmoInventory.grenades = 20;
+    blueMedicineInventory.medicine = 50;
+    orangeAmmoInventory.ammo = 100;
+    orangeAmmoInventory.grenades = 20;
+    orangeMedicineInventory.medicine = 50;
+    
     generateObstacles();
     placeWarehouses();
 }

@@ -7,7 +7,7 @@
  */
 Simulation::Simulation()
     : currentTurn(0), gameOver(false), winner(Team::BLUE),
-      paused(false), turnDelay(0.5f), timeSinceLastTurn(0.0f), showFogOfWar(false),
+      paused(false), turnDelay(0.5f), timeSinceLastTurn(0.0f), showFogOfWar(true),
       showVisionCones(false), showWeaponRanges(false) {
     initializeTeams();
 }
@@ -93,6 +93,11 @@ void Simulation::update(float deltaTime) {
  * @brief Update all characters
  */
 void Simulation::updateAllCharacters() {
+    // Log turn number for easier debugging
+    LOG_CHARACTER("\n============================================\n");
+    LOG_CHARACTER("TURN " << currentTurn << "\n");
+    LOG_CHARACTER("============================================\n");
+    
     // Update commanders first (they issue orders)
     for (Character* c : allCharacters) {
         if (c->isAlive() && c->getType() == CharacterType::COMMANDER) {
@@ -271,14 +276,14 @@ void Simulation::renderCell(int x, int y) {
             drawSquare(screenX, screenY, CELL_SIZE - 1, r, g, b);
             break;
         case CellType::WAREHOUSE: {
-            // Color-code warehouses by team ownership
+            // Dark yellow warehouses with slight team tint
             Team warehouseTeam = gameMap.getWarehouseTeam(Position{x, y});
             WarehouseType warehouseType = gameMap.getWarehouseType(Position{x, y});
             
             if (warehouseTeam == Team::BLUE) {
-                r = 0.3f; g = 0.5f; b = 1.0f;  // Blue warehouse
+                r = 0.6f; g = 0.6f; b = 0.1f;  // Dark yellow with blue tint
             } else {
-                r = 1.0f; g = 0.5f; b = 0.2f;  // Orange warehouse
+                r = 0.7f; g = 0.6f; b = 0.1f;  // Dark yellow with orange tint
             }
             drawSquare(screenX, screenY, CELL_SIZE - 1, r, g, b);
             
@@ -346,13 +351,16 @@ void Simulation::renderCharacter(Character* character) {
     if (character->getType() == CharacterType::WARRIOR) {
         Warrior* warrior = static_cast<Warrior*>(character);
         int ammo = warrior->getAmmo();
-        std::string ammoText = std::to_string(ammo) + "/50";
+        int grenades = warrior->getGrenades();
         
-        // Draw light background for dark text visibility
-        drawRectangle(screenX + 1, textYPos - 2, 22, 10, 0.9f, 0.9f, 0.9f);
+        // Format: "15/15 G:2" (ammo/max grenades:count)
+        std::string resourceText = std::to_string(ammo) + "/15 G:" + std::to_string(grenades);
         
-        // Draw ammo in dark blue (high contrast on light background)
-        drawText(screenX + 2, textYPos, ammoText.c_str(), 0.0f, 0.0f, 0.5f);
+        // Draw light background for dark text visibility (sized for full text)
+        drawRectangle(screenX - 2, textYPos - 2, 48, 10, 0.9f, 0.9f, 0.9f);
+        
+        // Draw resource text in dark blue (high contrast on light background)
+        drawText(screenX, textYPos, resourceText.c_str(), 0.0f, 0.0f, 0.5f);
     } else if (character->getType() == CharacterType::MEDIC) {
         Medic* medic = static_cast<Medic*>(character);
         int medicine = medic->getMedicineSupplies();

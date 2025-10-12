@@ -1,4 +1,7 @@
 #include "character.h"
+#include <random>
+#include <algorithm>
+
 
 /**
  * @brief Construct a new Character object
@@ -82,21 +85,64 @@ void Character::moveAlongPath(const std::vector<Character*>& allCharacters) {
         // Path is blocked - increment counter
         blockedTurns++;
         
-        // If blocked for 5+ turns, clear path AND skip updating this turn
-        // This gives the blocker more time to move out of the way
+        // If blocked for 5+ turns, try to sidestep to break deadlock
         if (blockedTurns >= 5) {
             if (blocker) {
                 std::cout << "[" << characterTypeToChar(type) << " " << teamToString(team) 
                          << "] Blocked for " << blockedTurns << " turns by " 
                          << characterTypeToChar(blocker->getType()) << " " << teamToString(blocker->getTeam())
-                         << " at (" << nextPos.x << "," << nextPos.y << "), clearing path and waiting\n";
-            } else {
-                std::cout << "[" << characterTypeToChar(type) << " " << teamToString(team) 
-                         << "] Blocked for " << blockedTurns << " turns, clearing path and waiting\n";
+                         << " at (" << nextPos.x << "," << nextPos.y << "), trying to sidestep\n";
             }
+            
+            // Try to move to an adjacent cell to break deadlock
+            // RANDOMIZE order to prevent predictable patterns
+            std::vector<Position> sideSteps = {
+                Position(position.x + 1, position.y),
+                Position(position.x - 1, position.y),
+                Position(position.x, position.y + 1),
+                Position(position.x, position.y - 1),
+                Position(position.x + 1, position.y + 1),
+                Position(position.x - 1, position.y - 1),
+                Position(position.x + 1, position.y - 1),
+                Position(position.x - 1, position.y + 1)
+            };
+            
+            // Shuffle the sidestep directions randomly
+            std::random_device rd;
+            std::mt19937 g(rd());
+            std::shuffle(sideSteps.begin(), sideSteps.end(), g);
+            
+            bool sideStepped = false;
+            for (const Position& sideStep : sideSteps) {
+                if (!isValidPosition(sideStep)) continue;
+                
+                // Check if passable and not occupied
+                bool canSideStep = true;
+                for (const Character* other : allCharacters) {
+                    if (other != this && other->isAlive() && other->getPosition() == sideStep) {
+                        canSideStep = false;
+                        break;
+                    }
+                }
+                
+                if (canSideStep) {
+                    position = sideStep;
+                    sideStepped = true;
+                    std::cout << "[" << characterTypeToChar(type) << " " << teamToString(team) 
+                             << "] Sidestepped to (" << sideStep.x << "," << sideStep.y << ") to break deadlock\n";
+                    break;
+                }
+            }
+            
+            // Clear path regardless of whether sidestep succeeded
             currentPath.clear();
             pathIndex = 0;
             blockedTurns = 0;
+            
+            if (!sideStepped) {
+                std::cout << "[" << characterTypeToChar(type) << " " << teamToString(team) 
+                         << "] Could not sidestep, waiting for blocker to move\n";
+            }
         }
     }
     // If occupied, wait (don't advance pathIndex, try again next turn)

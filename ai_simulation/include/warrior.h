@@ -22,6 +22,10 @@ private:
     bool isRetreating;              // True when warrior is actively retreating to safety
     Position retreatTarget;         // Position to retreat towards (usually medic location)
     Position lastKnownEnemyPosition;
+    Position previousPosition;      // Track previous position to detect oscillation
+    Position failedDestination;     // Track positions we couldn't reach (to avoid repeated failures)
+    int failedAttempts;             // Count failed attempts to reach destination
+    int turnsSinceLastMove;         // Count turns since last actual movement
     int lastLoggedTurn;  // Track when this warrior last logged to avoid spam
     
     void checkResources();
@@ -40,8 +44,13 @@ public:
     void executeOrder(Order order, const Map& map) override;
     
     // Resource management
-    void resupplyAmmo(int amount) { ammo += amount; needsAmmo = false; }
-    void heal(int amount) { health += amount; if (health > INITIAL_HEALTH) health = INITIAL_HEALTH; needsHealing = false; }
+    void resupplyAmmo(int ammoAmount, int grenadeAmount);  // Now takes specific amounts and prevents overflow
+    void heal(int amount);  // Updated to prevent overflow
+    
+    // Calculate how much warrior needs
+    int getAmmoNeeded() const { return INITIAL_AMMO - ammo; }
+    int getGrenadesNeeded() const { return INITIAL_GRENADES - grenades; }
+    int getHealthNeeded() const { return INITIAL_HEALTH - health; }
     
     // Status queries
     bool getNeedsAmmo() const { return needsAmmo; }
