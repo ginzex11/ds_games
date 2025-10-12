@@ -22,12 +22,23 @@ void Warrior::update(const Map& map, const std::vector<Character*>& allCharacter
     // Check resource status
     checkResources();
     
-    // If no order, look for enemies to engage
-    if (currentOrder.type == OrderType::NONE && !enemySightings.empty()) {
-        // Find nearest enemy
+    // Execute current order based on type
+    if (currentOrder.type == OrderType::ATTACK) {
+        executeAttackOrder(map, allCharacters);
+        
+        // Try to shoot if enemy is visible
         Character* enemy = findNearestEnemy(allCharacters);
         if (enemy) {
-            // Try to shoot
+            tryShootEnemy(enemy, map);
+        }
+    } else if (currentOrder.type == OrderType::DEFEND) {
+        executeDefendOrder(map, allCharacters);
+    } else if (currentOrder.type == OrderType::MOVE) {
+        // Move order is already handled in executeOrder
+    } else if (currentOrder.type == OrderType::NONE && !enemySightings.empty()) {
+        // If no order, look for enemies to engage autonomously
+        Character* enemy = findNearestEnemy(allCharacters);
+        if (enemy) {
             tryShootEnemy(enemy, map);
         }
     }

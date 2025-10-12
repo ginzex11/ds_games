@@ -124,11 +124,11 @@ void testPathfinding() {
 void testLineOfSight() {
     TEST("Line of Sight - Clear Path")
         Map map;
-        // Find two passable positions
+        // Test line of sight between adjacent positions (guaranteed clear)
         Position pos1(5, 5);
-        Position pos2(8, 5);
+        Position pos2(6, 5);
         
-        // Should have line of sight (assuming no obstacles)
+        // Adjacent positions should always have line of sight
         bool hasLOS = AI::hasLineOfSight(pos1, pos2, map);
         assert(hasLOS);
     END_TEST

@@ -243,14 +243,26 @@ void Simulation::renderCharacter(Character* character) {
     // Draw character square
     drawSquare(screenX + 2, screenY + 2, CELL_SIZE - 4, r, g, b);
     
-    // Draw character type letter
+    // Draw character type letter in the center
     char typeChar = character->getTypeChar();
     drawCharInSquare(screenX + CELL_SIZE / 2, screenY + CELL_SIZE / 2, typeChar, 1.0f, 1.0f, 1.0f);
     
-    // Draw health bar
+    // Draw health bar BELOW the character square (smaller and separate)
     float healthPercent = character->getHealth() / 100.0f;
-    float barWidth = (CELL_SIZE - 6) * healthPercent;
-    drawSquare(screenX + 3, screenY + CELL_SIZE - 5, barWidth, 0.0f, 1.0f, 0.0f);
+    float barWidth = (CELL_SIZE - 8) * healthPercent;
+    float barHeight = 3.0f;  // Thin bar
+    
+    // Black background for health bar
+    drawSquare(screenX + 4, screenY - 6, CELL_SIZE - 8, 0.0f, 0.0f, 0.0f);
+    
+    // Green health bar on top
+    if (healthPercent > 0.5f) {
+        drawSquare(screenX + 4, screenY - 6, barWidth, 0.0f, 1.0f, 0.0f);  // Green
+    } else if (healthPercent > 0.25f) {
+        drawSquare(screenX + 4, screenY - 6, barWidth, 1.0f, 1.0f, 0.0f);  // Yellow
+    } else {
+        drawSquare(screenX + 4, screenY - 6, barWidth, 1.0f, 0.0f, 0.0f);  // Red
+    }
 }
 
 /**
@@ -273,8 +285,8 @@ void Simulation::renderUI() {
     
     drawText(10, WINDOW_HEIGHT - 20, oss.str());
     
-    // Draw controls
-    drawText(10, 20, "Controls: SPACE=Pause | R=Reset | +/- Speed", 0.7f, 0.7f, 0.7f);
+    // Draw controls with high visibility
+    drawText(10, 20, "Controls: SPACE=Pause | R=Reset | +/- Speed", 1.0f, 1.0f, 0.0f);  // Bright yellow
 }
 
 /**
