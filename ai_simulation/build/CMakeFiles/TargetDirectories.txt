@@ -1,0 +1,4 @@
+E:/Afeka/ds games/ai_simulation/build/CMakeFiles/AISimulationGame.dir
+E:/Afeka/ds games/ai_simulation/build/CMakeFiles/test_main.dir
+E:/Afeka/ds games/ai_simulation/build/CMakeFiles/edit_cache.dir
+E:/Afeka/ds games/ai_simulation/build/CMakeFiles/rebuild_cache.dir
