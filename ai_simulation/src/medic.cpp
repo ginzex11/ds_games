@@ -132,8 +132,18 @@ void Medic::executeOrder(Order order, const Map& map) {
  */
 void Medic::travelToWarehouse(const Map& map) {
     Position warehouse = map.getWarehouse(team, WarehouseType::MEDICINE);
-    currentPath = AI::findPath(position, warehouse, map);
-    pathIndex = 0;
+    
+    // Only recalculate if we don't have a path or it's been cleared
+    if (currentPath.empty() || pathIndex >= static_cast<int>(currentPath.size())) {
+        LOG_CHARACTER("[MEDIC " << teamToString(team) << "] Calculating path to warehouse at (" 
+                 << warehouse.x << "," << warehouse.y << ")\n");
+        currentPath = AI::findPath(position, warehouse, map);
+        pathIndex = 0;
+        
+        if (currentPath.empty()) {
+            LOG_CHARACTER("[MEDIC " << teamToString(team) << "] WARNING: No path to warehouse found!\n");
+        }
+    }
 }
 
 /**

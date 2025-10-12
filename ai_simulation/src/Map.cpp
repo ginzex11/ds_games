@@ -15,55 +15,57 @@ Map::Map() {
 }
 
 /**
- * @brief Generate obstacle clusters (rocks, trees, water) on the map
+ * @brief Generate scattered obstacles (rocks, trees, water) on the map
+ * Changed from clusters to scattered distribution for better gameplay
  */
 void Map::generateObstacles() {
     std::mt19937 rng(static_cast<unsigned>(std::time(nullptr)));
-    std::uniform_int_distribution<int> xDist(5, GRID_WIDTH - 6);
-    std::uniform_int_distribution<int> yDist(5, GRID_HEIGHT - 6);
+    std::uniform_int_distribution<int> xDist(3, GRID_WIDTH - 4);
+    std::uniform_int_distribution<int> yDist(3, GRID_HEIGHT - 4);
     std::uniform_int_distribution<int> typeDist(0, 2);
-    std::uniform_int_distribution<int> radiusDist(2, 4);
     
-    // Create 8-12 obstacle clusters
-    int numClusters = 8 + (rng() % 5);
+    // Calculate total obstacles to place (about 15-20% of map)
+    int totalCells = GRID_WIDTH * GRID_HEIGHT;
+    int targetObstacles = static_cast<int>(totalCells * 0.17f);  // 17% coverage
     
-    for (int i = 0; i < numClusters; ++i) {
-        Position center(xDist(rng), yDist(rng));
-        int radius = radiusDist(rng);
+    // Place individual obstacles scattered across the map
+    int placed = 0;
+    int attempts = 0;
+    int maxAttempts = targetObstacles * 3;  // Prevent infinite loops
+    
+    while (placed < targetObstacles && attempts < maxAttempts) {
+        attempts++;
         
+        Position pos(xDist(rng), yDist(rng));
+        
+        // Skip if already occupied
+        if (grid[pos.y][pos.x].type != CellType::EMPTY) {
+            continue;
+        }
+        
+        // Determine obstacle type
         CellType type;
         int typeChoice = typeDist(rng);
         if (typeChoice == 0) type = CellType::ROCK;
         else if (typeChoice == 1) type = CellType::TREE;
         else type = CellType::WATER;
         
-        createObstacleCluster(center, type, radius);
-    }
-}
-
-/**
- * @brief Create a cluster of obstacles around a center point
- * 
- * @param center Center position of the cluster
- * @param type Type of obstacle to place
- * @param radius Approximate radius of the cluster
- */
-void Map::createObstacleCluster(Position center, CellType type, int radius) {
-    std::mt19937 rng(static_cast<unsigned>(std::time(nullptr)) + center.x * 1000 + center.y);
-    std::uniform_real_distribution<float> probDist(0.0f, 1.0f);
-    
-    for (int dy = -radius; dy <= radius; ++dy) {
-        for (int dx = -radius; dx <= radius; ++dx) {
-            Position pos(center.x + dx, center.y + dy);
+        // Place the obstacle
+        grid[pos.y][pos.x] = Cell(type);
+        placed++;
+        
+        // Small chance to place 1-2 adjacent obstacles for variety (not full clusters)
+        if (rng() % 100 < 25) {  // 25% chance
+            std::uniform_int_distribution<int> offsetDist(-1, 1);
+            int dx = offsetDist(rng);
+            int dy = offsetDist(rng);
             
-            if (!isValidPosition(pos)) continue;
-            
-            // Distance-based probability (closer to center = higher chance)
-            float distance = std::sqrt(static_cast<float>(dx * dx + dy * dy));
-            float probability = 1.0f - (distance / (radius + 1));
-            
-            if (probDist(rng) < probability) {
-                grid[pos.y][pos.x] = Cell(type);
+            if (dx != 0 || dy != 0) {  // Don't place on self
+                Position adjacent(pos.x + dx, pos.y + dy);
+                if (isValidPosition(adjacent) && grid[adjacent.y][adjacent.x].type == CellType::EMPTY) {
+                    grid[adjacent.y][adjacent.x] = Cell(type);
+                    placed++;
+                }
             }
         }
     }
