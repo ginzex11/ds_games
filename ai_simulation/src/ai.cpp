@@ -80,44 +80,52 @@ std::vector<Position> AI::findPath(
 }
 
 /**
- * @brief Find nearest safe position using BFS
+ * @brief Find nearest safe position using depth-limited BFS
+ * Per assignment requirement: "יש להגדיר טווח החיפוש" (must define search range)
  */
 Position AI::findNearestSafePosition(
     const Position& start,
     const Map& map,
     const std::vector<std::vector<float>>& safetyMap,
-    float safetyThreshold
+    float safetyThreshold,
+    int maxDistance
 ) {
     // Check if current position is already safe
     if (safetyMap[start.y][start.x] <= safetyThreshold) {
         return start;
     }
     
-    std::queue<Position> queue;
+    // BFS with depth tracking
+    std::queue<std::pair<Position, int>> queue;  // <position, distance>
     std::unordered_set<Position> visited;
     
-    queue.push(start);
+    queue.push({start, 0});
     visited.insert(start);
     
     while (!queue.empty()) {
-        Position current = queue.front();
+        auto [current, distance] = queue.front();
         queue.pop();
+        
+        // Depth limit check - don't search beyond maxDistance
+        if (distance > maxDistance) {
+            continue;
+        }
         
         // Check if this position is safe
         if (safetyMap[current.y][current.x] <= safetyThreshold && map.isPassable(current)) {
             return current;
         }
         
-        // Add neighbors to queue
+        // Add neighbors to queue with incremented distance
         for (const Position& neighbor : getNeighbors(current)) {
             if (isValidPosition(neighbor) && !visited.count(neighbor)) {
                 visited.insert(neighbor);
-                queue.push(neighbor);
+                queue.push({neighbor, distance + 1});
             }
         }
     }
     
-    // No safe position found, return start
+    // No safe position found within range, return start
     return start;
 }
 

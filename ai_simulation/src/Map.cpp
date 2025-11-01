@@ -1,6 +1,8 @@
 #include "map.h"
 #include <random>
 #include <ctime>
+#include <fstream>
+#include <iomanip>
 
 /**
  * @brief Construct a new Map object and generate terrain
@@ -10,14 +12,15 @@ Map::Map() {
     grid.resize(GRID_HEIGHT, std::vector<Cell>(GRID_WIDTH));
     
     // Initialize warehouse inventories
-    // Each warehouse starts with enough supplies for multiple resupplies
-    blueAmmoInventory.ammo = 100;      // 100 bullets
-    blueAmmoInventory.grenades = 20;   // 20 grenades
-    blueMedicineInventory.medicine = 50; // 50 medicine units
+    // OPTION 1: 2x capacity for extended battles (was 1.5x)
+    // Enough supplies for 100+ turn battles without depletion crisis
+    blueAmmoInventory.ammo = 450;         // 450 bullets (2x base 225) - ~30 resupplies
+    blueAmmoInventory.grenades = 90;      // 90 grenades (2x base 45) - ~45 resupplies
+    blueMedicineInventory.medicine = 1500; // 1500 medicine (2x base 750) - ~15 full heals
     
-    orangeAmmoInventory.ammo = 100;
-    orangeAmmoInventory.grenades = 20;
-    orangeMedicineInventory.medicine = 50;
+    orangeAmmoInventory.ammo = 450;
+    orangeAmmoInventory.grenades = 90;
+    orangeMedicineInventory.medicine = 1500;
     
     // Generate map features
     generateObstacles();
@@ -294,14 +297,147 @@ void Map::reset() {
     grid.clear();
     grid.resize(GRID_HEIGHT, std::vector<Cell>(GRID_WIDTH));
     
-    // Reset inventories
-    blueAmmoInventory.ammo = 100;
-    blueAmmoInventory.grenades = 20;
-    blueMedicineInventory.medicine = 50;
-    orangeAmmoInventory.ammo = 100;
-    orangeAmmoInventory.grenades = 20;
-    orangeMedicineInventory.medicine = 50;
+    // Reset inventories - OPTION 1: 2x capacity
+    blueAmmoInventory.ammo = 450;
+    blueAmmoInventory.grenades = 90;
+    blueMedicineInventory.medicine = 1500;
+    orangeAmmoInventory.ammo = 450;
+    orangeAmmoInventory.grenades = 90;
+    orangeMedicineInventory.medicine = 1500;
     
     generateObstacles();
     placeWarehouses();
+}
+
+/**
+ * @brief Log the map layout to a separate file for debugging
+ */
+void Map::logMapLayout() const {
+    std::ofstream logFile("logs/map_layout.txt");
+    if (!logFile.is_open()) {
+        return;
+    }
+    
+    logFile << "=================================================\n";
+    logFile << "  Map Layout - " << GRID_WIDTH << "x" << GRID_HEIGHT << " Grid\n";
+    logFile << "=================================================\n\n";
+    
+    // Legend
+    logFile << "Legend:\n";
+    logFile << "  . = Empty terrain\n";
+    logFile << "  # = Rock (blocks movement, sight, shooting)\n";
+    logFile << "  T = Tree (allows movement, blocks sight/shooting)\n";
+    logFile << "  ~ = Water (blocks movement, allows sight/shooting)\n";
+    logFile << "  BA = Blue Ammo Warehouse\n";
+    logFile << "  BM = Blue Medicine Warehouse\n";
+    logFile << "  OA = Orange Ammo Warehouse\n";
+    logFile << "  OM = Orange Medicine Warehouse\n\n";
+    
+    // Column numbers (top)
+    logFile << "     ";
+    for (int x = 0; x < GRID_WIDTH; x++) {
+        logFile << (x % 10);
+    }
+    logFile << "\n";
+    
+    logFile << "     ";
+    for (int x = 0; x < GRID_WIDTH; x++) {
+        logFile << "-";
+    }
+    logFile << "\n";
+    
+    // Map grid
+    for (int y = 0; y < GRID_HEIGHT; y++) {
+        // Row number (left)
+        logFile << std::setw(3) << y << " |";
+        
+        for (int x = 0; x < GRID_WIDTH; x++) {
+            Position pos(x, y);
+            
+            // Check if warehouse
+            if (pos == blueAmmoWarehouse) {
+                logFile << "B";
+            } else if (pos == blueMedicineWarehouse) {
+                logFile << "M";
+            } else if (pos == orangeAmmoWarehouse) {
+                logFile << "O";
+            } else if (pos == orangeMedicineWarehouse) {
+                logFile << "X";
+            } else {
+                // Check terrain type
+                CellType type = grid[y][x].type;
+                switch (type) {
+                    case CellType::EMPTY:
+                        logFile << ".";
+                        break;
+                    case CellType::ROCK:
+                        logFile << "#";
+                        break;
+                    case CellType::TREE:
+                        logFile << "T";
+                        break;
+                    case CellType::WATER:
+                        logFile << "~";
+                        break;
+                    default:
+                        logFile << "?";
+                        break;
+                }
+            }
+        }
+        
+        logFile << "| " << y << "\n";
+    }
+    
+    // Column numbers (bottom)
+    logFile << "     ";
+    for (int x = 0; x < GRID_WIDTH; x++) {
+        logFile << "-";
+    }
+    logFile << "\n";
+    
+    logFile << "     ";
+    for (int x = 0; x < GRID_WIDTH; x++) {
+        logFile << (x % 10);
+    }
+    logFile << "\n\n";
+    
+    // Warehouse positions
+    logFile << "Warehouse Positions:\n";
+    logFile << "  Blue Ammo:     (" << blueAmmoWarehouse.x << "," << blueAmmoWarehouse.y << ")\n";
+    logFile << "  Blue Medicine: (" << blueMedicineWarehouse.x << "," << blueMedicineWarehouse.y << ")\n";
+    logFile << "  Orange Ammo:   (" << orangeAmmoWarehouse.x << "," << orangeAmmoWarehouse.y << ")\n";
+    logFile << "  Orange Medicine: (" << orangeMedicineWarehouse.x << "," << orangeMedicineWarehouse.y << ")\n\n";
+    
+    // Inventory status
+    logFile << "Warehouse Inventories:\n";
+    logFile << "  Blue Ammo:     " << blueAmmoInventory.ammo << " bullets, " 
+            << blueAmmoInventory.grenades << " grenades\n";
+    logFile << "  Blue Medicine: " << blueMedicineInventory.medicine << " medicine\n";
+    logFile << "  Orange Ammo:   " << orangeAmmoInventory.ammo << " bullets, " 
+            << orangeAmmoInventory.grenades << " grenades\n";
+    logFile << "  Orange Medicine: " << orangeMedicineInventory.medicine << " medicine\n\n";
+    
+    // Terrain statistics
+    int emptyCount = 0, rockCount = 0, treeCount = 0, waterCount = 0;
+    for (int y = 0; y < GRID_HEIGHT; y++) {
+        for (int x = 0; x < GRID_WIDTH; x++) {
+            switch (grid[y][x].type) {
+                case CellType::EMPTY: emptyCount++; break;
+                case CellType::ROCK: rockCount++; break;
+                case CellType::TREE: treeCount++; break;
+                case CellType::WATER: waterCount++; break;
+            }
+        }
+    }
+    
+    int totalCells = GRID_WIDTH * GRID_HEIGHT;
+    logFile << "Terrain Statistics:\n";
+    logFile << "  Empty:  " << emptyCount << " (" << (emptyCount * 100 / totalCells) << "%)\n";
+    logFile << "  Rocks:  " << rockCount << " (" << (rockCount * 100 / totalCells) << "%)\n";
+    logFile << "  Trees:  " << treeCount << " (" << (treeCount * 100 / totalCells) << "%)\n";
+    logFile << "  Water:  " << waterCount << " (" << (waterCount * 100 / totalCells) << "%)\n";
+    logFile << "  Total:  " << totalCells << " cells\n";
+    
+    logFile.close();
 }

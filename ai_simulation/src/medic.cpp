@@ -6,8 +6,10 @@
  */
 Medic::Medic(Position pos, Team t)
     : Character(pos, t, CharacterType::MEDIC),
-      medicineSupplies(0), currentPatient(nullptr), returningFromWarehouse(false) {
-    // Medics must visit warehouse FIRST to get supplies before healing
+      medicineSupplies(0), currentPatient(nullptr), returningFromWarehouse(false),
+      warehouseFailureCount(0), lastWarehouseAttemptTurn(0), currentTurnTracker(0),
+      patientPathFailures(0), lastPatientPathAttempt(0) {
+    // Medics start with 0 medicine - must receive order from commander to get supplies
 }
 
 /**
@@ -15,6 +17,9 @@ Medic::Medic(Position pos, Team t)
  */
 void Medic::update(const Map& map, const std::vector<Character*>& allCharacters, int currentTurn) {
     if (!alive) return;
+    
+    // Track current turn for warehouse retry logic
+    currentTurnTracker = currentTurn;
     
     // YIELD LOGIC: If standing still and blocking friendly warriors, move aside
     if (currentPath.empty() || pathIndex >= static_cast<int>(currentPath.size())) {
@@ -72,6 +77,24 @@ void Medic::update(const Map& map, const std::vector<Character*>& allCharacters,
         }
     }
     auto safetyMap = AI::generateSafetyMap(enemyPositions, map);
+    
+    // AUTONOMOUS RESUPPLY: If idle and low on medicine, go to warehouse
+    if (currentOrder.type != OrderType::HEAL && medicineSupplies <= 1 && !returningFromWarehouse) {
+        LOG_CHARACTER("[MEDIC " << teamToString(team) << "] AUTONOMOUS: Low on supplies (" 
+                 << medicineSupplies << " packs), going to warehouse\n");
+        travelToWarehouse(map, safetyMap);
+        moveAlongPath(allCharacters);
+        
+        // Check if reached warehouse
+        if (map.isWarehouse(position) && map.getWarehouseType(position) == WarehouseType::MEDICINE) {
+            LOG_CHARACTER("[MEDIC " << teamToString(team) << "] Reached warehouse during autonomous resupply\n");
+            Map& mutableMap = const_cast<Map&>(map);
+            collectMedicine(mutableMap);
+            currentPath.clear();
+            pathIndex = 0;
+        }
+        return;  // Skip normal order processing this turn
+    }
     
     // If carrying out heal order
     if (currentOrder.type == OrderType::HEAL && currentPatient) {
@@ -132,9 +155,12 @@ void Medic::update(const Map& map, const std::vector<Character*>& allCharacters,
                                    pathIndex >= static_cast<int>(currentPath.size()) - 2;
                 
                 // Check if patient moved from our target (happens during retreat)
+                // FIX: Allow target to be adjacent to patient (for blocked paths)
                 if (!needsNewPath && !currentPath.empty()) {
                     Position currentTarget = currentPath[currentPath.size() - 1];
-                    if (currentTarget != patientPos) {
+                    float distToTarget = currentTarget.euclideanDistance(patientPos);
+                    // Patient moved if target is more than 1.5 tiles away (allows adjacent/diagonal)
+                    if (distToTarget > 1.5f) {
                         needsNewPath = true;
                         LOG_CHARACTER("[MEDIC " << teamToString(team) << "] Patient moved! Recalculating path\n");
                     }
@@ -218,17 +244,80 @@ void Medic::travelToWarehouse(const Map& map, const std::vector<std::vector<floa
     
     // Only recalculate if we don't have a path or it's been cleared
     if (currentPath.empty() || pathIndex >= static_cast<int>(currentPath.size())) {
-        LOG_CHARACTER("[MEDIC " << teamToString(team) << "] Calculating DIRECT path to warehouse at (" 
-                 << warehouse.x << "," << warehouse.y << ") - ignoring safety\n");
+        LOG_CHARACTER("[MEDIC " << teamToString(team) << "] Attempting warehouse resupply at (" 
+                 << warehouse.x << "," << warehouse.y << ")\n");
         
-        // CRITICAL: Support units MUST reach warehouses - use direct path with NO safety weight
+        // TIER 1: Try direct path (no safety - critical mission for support units)
         currentPath = AI::findPath(position, warehouse, map);
-        
         pathIndex = 0;
         
         if (currentPath.empty()) {
-            LOG_CHARACTER("[MEDIC " << teamToString(team) << "] ERROR: No path to warehouse found!\n");
+            LOG_CHARACTER("[MEDIC " << teamToString(team) << "] Direct warehouse path failed. Trying adjacent positions...\n");
+            
+            // Try all 8 adjacent positions around the warehouse
+            int dx[] = {-1, 0, 1, -1, 1, -1, 0, 1};
+            int dy[] = {-1, -1, -1, 0, 0, 1, 1, 1};
+            
+            for (int i = 0; i < 8; i++) {
+                Position adjPos(warehouse.x + dx[i], warehouse.y + dy[i]);
+                
+                // Check if position is valid and passable
+                if (adjPos.x >= 0 && adjPos.x < map.getWidth() && 
+                    adjPos.y >= 0 && adjPos.y < map.getHeight() && 
+                    map.isPassable(adjPos)) {
+                    
+                    currentPath = AI::findPath(position, adjPos, map);
+                    
+                    if (!currentPath.empty()) {
+                        LOG_CHARACTER("[MEDIC " << teamToString(team) << "] Found path to adjacent warehouse position (" 
+                                 << adjPos.x << "," << adjPos.y << ") - " << currentPath.size() << " cells\n");
+                        pathIndex = 0;
+                        warehouseFailureCount = 0;  // Reset on success
+                        return;
+                    }
+                }
+            }
+            
+            // TIER 2: All direct attempts failed - reposition and retry
+            warehouseFailureCount++;
+            
+            if (warehouseFailureCount <= 3) {
+                LOG_CHARACTER("[MEDIC " << teamToString(team) << "] Warehouse blocked (attempt " 
+                         << warehouseFailureCount << "/3). Repositioning for better angle...\n");
+                
+                // Move toward team spawn area for better approach angle
+                Position repositionTarget = (team == Team::BLUE) ? 
+                    Position(5, GRID_HEIGHT / 2) : Position(GRID_WIDTH - 5, GRID_HEIGHT / 2);
+                
+                currentPath = AI::findPath(position, repositionTarget, map);
+                pathIndex = 0;
+                
+                if (!currentPath.empty()) {
+                    LOG_CHARACTER("[MEDIC " << teamToString(team) << "] Moving to reposition point, will retry warehouse next turn\n");
+                    return;  // Move to better position, keep patient assigned
+                }
+            }
+            
+            // TIER 3: Extended failure - enter wait mode with periodic retries
+            if (warehouseFailureCount > 3) {
+                // Only retry every 5 turns to avoid spam and allow situation to change
+                if ((currentTurnTracker - lastWarehouseAttemptTurn) < 5) {
+                    LOG_CHARACTER("[MEDIC " << teamToString(team) << "] Warehouse unreachable. "
+                             << "Waiting " << (5 - (currentTurnTracker - lastWarehouseAttemptTurn)) 
+                             << " more turns before retry (patient at critical HP)...\n");
+                    currentPath.clear();
+                    pathIndex = 0;
+                    return;  // Hold position, keep patient assigned
+                } else {
+                    LOG_CHARACTER("[MEDIC " << teamToString(team) << "] Retrying warehouse after 5-turn wait...\n");
+                    warehouseFailureCount = 0;  // Reset counter
+                    lastWarehouseAttemptTurn = currentTurnTracker;
+                    // Fall through to retry pathfinding on next update
+                }
+            }
         } else {
+            // Success! Reset failure counter
+            warehouseFailureCount = 0;
             LOG_CHARACTER("[MEDIC " << teamToString(team) << "] Warehouse path: " << currentPath.size() << " cells\n");
         }
     }
@@ -248,8 +337,56 @@ void Medic::travelToPatient(const Map& map, const std::vector<std::vector<float>
     currentPath = AI::findPath(position, patientPos, map);
     
     if (currentPath.empty()) {
-        LOG_CHARACTER("[MEDIC " << teamToString(team) << "] ERROR: No path to patient!\n");
+        // Track pathfinding failures
+        patientPathFailures++;
+        
+        // TIMEOUT LOGIC: After 10 consecutive failures, give up on this patient
+        if (patientPathFailures >= 10) {
+            LOG_CHARACTER("[MEDIC " << teamToString(team) << "] ERROR: Failed to path to patient " 
+                     << patientPathFailures << " times. Clearing order - patient unreachable!\n");
+            currentPatient = nullptr;
+            currentOrder = Order();
+            patientPathFailures = 0;
+            lastPatientPathAttempt = currentTurnTracker;
+            pathIndex = 0;
+            return;
+        }
+        
+        LOG_CHARACTER("[MEDIC " << teamToString(team) << "] ERROR: No direct path to patient (failure " 
+                 << patientPathFailures << "/10)! Trying adjacent positions...\n");
+        
+        // Try all 8 adjacent positions around the patient
+        int dx[] = {-1, 0, 1, -1, 1, -1, 0, 1};
+        int dy[] = {-1, -1, -1, 0, 0, 1, 1, 1};
+        
+        for (int i = 0; i < 8; i++) {
+            Position adjPos(patientPos.x + dx[i], patientPos.y + dy[i]);
+            
+            // Check if position is valid and passable
+            if (adjPos.x >= 0 && adjPos.x < map.getWidth() && 
+                adjPos.y >= 0 && adjPos.y < map.getHeight() && 
+                map.isPassable(adjPos)) {
+                
+                currentPath = AI::findPath(position, adjPos, map);
+                
+                if (!currentPath.empty()) {
+                    LOG_CHARACTER("[MEDIC " << teamToString(team) << "] Found path to adjacent position (" 
+                             << adjPos.x << "," << adjPos.y << ") - " << currentPath.size() << " cells\n");
+                    pathIndex = 0;
+                    patientPathFailures = 0;  // Reset on success
+                    return;
+                }
+            }
+        }
+        
+        // Still no path found - increment failures but keep trying
+        LOG_CHARACTER("[MEDIC " << teamToString(team) << "] WARNING: No adjacent path found either. "
+                 << "Will retry next turn (" << patientPathFailures << "/10 failures)\n");
+        pathIndex = 0;
+        return;
     } else {
+        // Success! Reset failure counter
+        patientPathFailures = 0;
         LOG_CHARACTER("[MEDIC " << teamToString(team) << "] Patient path: " << currentPath.size() << " cells\n");
     }
     
@@ -262,47 +399,79 @@ void Medic::travelToPatient(const Map& map, const std::vector<std::vector<float>
 void Medic::healPatient(Map& map) {
     if (!currentPatient || medicineSupplies <= 0) return;
     
-    // Heal patient
-    Warrior* warrior = dynamic_cast<Warrior*>(currentPatient);
-    if (warrior) {
-        // Calculate how much healing needed
-        int healthNeeded = warrior->getHealthNeeded();
-        
-        LOG_CHARACTER("[MEDIC " << teamToString(team) << "] Warrior needs: " << healthNeeded << " HP\n");
-        
-        // Try to take from warehouse inventory
-        int healthToGive = 0;
-        if (map.takeMedicine(team, healthNeeded)) {
-            healthToGive = healthNeeded;
-        } else {
-            // Give whatever is available
-            int available = map.getMedicineInventory(team);
-            if (map.takeMedicine(team, available)) {
-                healthToGive = available;
-            }
-        }
-        
-        // Heal warrior with what we got
-        warrior->heal(healthToGive);
-        medicineSupplies--;  // Used one medicine pack
-        
-        LOG_CHARACTER("[MEDIC " << teamToString(team) << "] Gave " << healthToGive 
-                 << " HP. Warehouse now has: " << map.getMedicineInventory(team) << " medicine\n");
-        
-        // Clear order
+    // Calculate how much healing is needed (all characters have health)
+    int currentHealth = currentPatient->getHealth();
+    int maxHealth = 100; // INITIAL_HEALTH
+    int healthNeeded = maxHealth - currentHealth;
+    
+    if (healthNeeded <= 0) {
+        // Patient is already at full health
+        LOG_CHARACTER("[MEDIC " << teamToString(team) << "] Patient already at full health\n");
         currentPatient = nullptr;
         currentOrder = Order();
         returningFromWarehouse = false;
+        return;
     }
+    
+    LOG_CHARACTER("[MEDIC " << teamToString(team) << "] Patient needs: " << healthNeeded << " HP\n");
+    
+    // Try to take from warehouse inventory
+    int healthToGive = 0;
+    if (map.takeMedicine(team, healthNeeded)) {
+        healthToGive = healthNeeded;
+    } else {
+        // Give whatever is available
+        int available = map.getMedicineInventory(team);
+        if (map.takeMedicine(team, available)) {
+            healthToGive = available;
+        }
+    }
+    
+    // Heal patient with what we got
+    currentPatient->heal(healthToGive);
+    medicineSupplies--;  // Used one medicine pack
+    
+    std::string patientType;
+    switch(currentPatient->getType()) {
+        case CharacterType::WARRIOR: patientType = "Warrior"; break;
+        case CharacterType::MEDIC: patientType = "Medic"; break;
+        case CharacterType::SUPPLIER: patientType = "Supplier"; break;
+        case CharacterType::COMMANDER: patientType = "Commander"; break;
+    }
+    
+    LOG_CHARACTER("[MEDIC " << teamToString(team) << "] Healed " << patientType 
+             << " with " << healthToGive << " HP (now " << currentPatient->getHealth() << "/" << maxHealth 
+             << "). Warehouse has: " << map.getMedicineInventory(team) << " medicine\n");
+    
+    // Clear order
+    currentPatient = nullptr;
+    currentOrder = Order();
+    returningFromWarehouse = false;
 }
 
 /**
  * @brief Collect medicine supplies from warehouse
  */
 void Medic::collectMedicine(Map& map) {
-    // Medic just picks up a "medicine pack" - doesn't take specific amounts yet
-    medicineSupplies++;
-    LOG_CHARACTER("[MEDIC " << teamToString(team) << "] Collected medicine pack (now has " 
-             << medicineSupplies << " packs). Warehouse inventory: " 
-             << map.getMedicineInventory(team) << " medicine\n");
+    // Try to take medicine supplies from warehouse (one pack at a time)
+    // Each pack represents enough medicine for one healing session
+    const int MEDICINE_PER_PACK = 100; // Each pack can heal up to 100 HP
+    
+    if (map.takeMedicine(team, MEDICINE_PER_PACK)) {
+        medicineSupplies++;
+        LOG_CHARACTER("[MEDIC " << teamToString(team) << "] Collected medicine pack (now has " 
+                 << medicineSupplies << " packs). Warehouse inventory: " 
+                 << map.getMedicineInventory(team) << " medicine remaining\n");
+    } else {
+        // Try to take whatever is available
+        int available = map.getMedicineInventory(team);
+        if (available > 0 && map.takeMedicine(team, available)) {
+            medicineSupplies++;
+            LOG_CHARACTER("[MEDIC " << teamToString(team) << "] Collected partial medicine pack (now has " 
+                     << medicineSupplies << " packs). Warehouse inventory: " 
+                     << map.getMedicineInventory(team) << " medicine remaining\n");
+        } else {
+            LOG_CHARACTER("[MEDIC " << teamToString(team) << "] WARNING: Warehouse is empty! No medicine available.\n");
+        }
+    }
 }

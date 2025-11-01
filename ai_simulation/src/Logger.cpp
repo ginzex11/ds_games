@@ -1,9 +1,10 @@
 #include "Logger.h"
 #include <iostream>
-#include <filesystem>
 #include <ctime>
 #include <iomanip>
 #include <sstream>
+#include <sys/stat.h>
+#include <direct.h>  // For _mkdir on Windows
 
 // Initialize static members
 std::ofstream Logger::characterLog;
@@ -21,13 +22,12 @@ void Logger::initialize(const std::string& logDirectory) {
     
     logDir = logDirectory;
     
-    // Create logs directory if it doesn't exist
-    try {
-        std::filesystem::create_directories(logDirectory);
-    } catch (const std::exception& e) {
-        std::cerr << "Failed to create log directory: " << e.what() << std::endl;
-        return;
-    }
+    // Create logs directory if it doesn't exist (Windows)
+    #ifdef _WIN32
+        _mkdir(logDirectory.c_str());
+    #else
+        mkdir(logDirectory.c_str(), 0777);
+    #endif
     
     // Get current timestamp for log file names
     auto now = std::time(nullptr);

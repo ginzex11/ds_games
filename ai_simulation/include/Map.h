@@ -68,6 +68,7 @@ public:
     void reset();
     int getWidth() const { return GRID_WIDTH; }
     int getHeight() const { return GRID_HEIGHT; }
+    void logMapLayout() const;  // Log the entire map layout to map_layout.txt
 };
 
 #endif // MAP_H

@@ -18,6 +18,11 @@ private:
     Character* currentRecipient;
     bool returningFromWarehouse;
     
+    // Recipient pathfinding failure tracking
+    int recipientPathFailures;
+    int lastRecipientPathAttempt;
+    int currentTurnTracker;
+    
     void travelToWarehouse(const Map& map, const std::vector<std::vector<float>>& safetyMap);
     void travelToRecipient(const Map& map, const std::vector<std::vector<float>>& safetyMap);
     void resupplyRecipient(Map& map);  // Now takes map to check warrior needs

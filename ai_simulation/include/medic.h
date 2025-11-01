@@ -18,6 +18,15 @@ private:
     Character* currentPatient;
     bool returningFromWarehouse;
     
+    // Warehouse failure tracking for intelligent fallback
+    int warehouseFailureCount;
+    int lastWarehouseAttemptTurn;
+    int currentTurnTracker;  // Track current turn for retry logic
+    
+    // Patient pathfinding failure tracking
+    int patientPathFailures;
+    int lastPatientPathAttempt;
+    
     void travelToWarehouse(const Map& map, const std::vector<std::vector<float>>& safetyMap);
     void travelToPatient(const Map& map, const std::vector<std::vector<float>>& safetyMap);
     void healPatient(Map& map);  // Now takes map to check patient needs

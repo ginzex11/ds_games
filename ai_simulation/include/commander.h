@@ -21,9 +21,9 @@ private:
     
     void buildCombinedVisibilityMap(const std::vector<Character*>& teamMembers, int currentTurn);
     void aggregateTeamVisibility(const std::vector<Character*>& teamMembers);
-    void issueOrders(const std::vector<Character*>& teamMembers, const Map& map);
+    void issueOrders(const std::vector<Character*>& teamMembers, const Map& map, int currentTurn);
     void relocateIfNeeded(const Map& map);
-    Order determineWarriorOrder(Character* warrior, const Map& map);
+    Order determineWarriorOrder(Character* warrior, const Map& map, int currentTurn);
     Order determineMedicOrder(Character* medic, const std::vector<Character*>& teamMembers, const Map& map);
     Order determineSupplierOrder(Character* supplier, const std::vector<Character*>& teamMembers, const Map& map);
     

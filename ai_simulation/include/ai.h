@@ -38,19 +38,21 @@ public:
     );
     
     /**
-     * @brief Find nearest safe position using BFS
+     * @brief Find nearest safe position using depth-limited BFS
      * 
      * @param start Starting position
      * @param map Reference to the game map
      * @param safetyMap Safety scores for each cell
      * @param safetyThreshold Maximum acceptable safety score
+     * @param maxDistance Maximum search distance (depth limit for BFS)
      * @return Position Nearest safe position (returns start if none found)
      */
     static Position findNearestSafePosition(
         const Position& start,
         const Map& map,
         const std::vector<std::vector<float>>& safetyMap,
-        float safetyThreshold
+        float safetyThreshold,
+        int maxDistance = 15  // Default search range as required by assignment
     );
     
     /**

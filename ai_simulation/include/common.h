@@ -41,19 +41,21 @@ constexpr int WINDOW_HEIGHT = 900;
 constexpr float CELL_SIZE = 30.0f;
 
 // Game balance constants
-constexpr int INITIAL_HEALTH = 100;
+constexpr int INITIAL_HEALTH = 150;        // Increased from 100 for longer battles & more warehouse interaction
 constexpr int INITIAL_AMMO = 15;           // Reduced from 50 - enough for 1.5 kills, forces resupply
 constexpr int INITIAL_GRENADES = 2;        // Reduced from 3 - grenades more precious
-constexpr int WARRIOR_DAMAGE = 10;         // 10 shots to kill
+constexpr int WARRIOR_DAMAGE = 9;          // 16.6 shots to kill (balanced between survival and game speed)
 constexpr int GRENADE_DAMAGE = 40;
 constexpr int GRENADE_RADIUS = 2;
 constexpr int SHOOT_RANGE = 8;
 constexpr int GRENADE_RANGE = 6;
-constexpr int VISIBILITY_RANGE = 10;
-constexpr int LOW_HEALTH_THRESHOLD = 50;       // Request healing at 50% health
-constexpr int RETREAT_HEALTH_THRESHOLD = 40;   // Start retreating at 40% health (with time to escape)
-constexpr int CRITICAL_HEALTH_THRESHOLD = 25;  // Critical danger zone at 25% health
-constexpr int LOW_AMMO_THRESHOLD = 8;          // Reduced from 25 - request ammo at ~50% (8/15)
+constexpr int VISIBILITY_RANGE = 10;       // Reduced from 15 - allows warriors to disengage during retreat
+constexpr int LOW_HEALTH_THRESHOLD = 50;       // Request healing at 50 HP (33% of max health)
+constexpr int RETREAT_HEALTH_THRESHOLD = 50;   // OPTION 4: Increased from 40 - retreat earlier (33% HP)
+constexpr int TACTICAL_WITHDRAWAL_THRESHOLD = 80; // NEW: Preemptive retreat at 53% HP when under fire (lowered from 100)
+constexpr int RETURN_TO_COMBAT_THRESHOLD = 100;  // NEW: Stay in retreat until 100 HP (67%) - shorter wait
+constexpr int CRITICAL_HEALTH_THRESHOLD = 25;  // Critical danger zone at 25 HP
+constexpr int LOW_AMMO_THRESHOLD = 12;         // OPTION 4: Increased from 10 - request ammo sooner (20% remaining)
 constexpr int WAREHOUSE_RESUPPLY_AMOUNT = 12;  // Reduced from 20 - gives 12 bullets
 constexpr int MEDICINE_HEAL_AMOUNT = 100;
 

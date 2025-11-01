@@ -20,10 +20,14 @@ struct ShootEffect {
     Position to;
     bool isGrenade;
     int turnsRemaining;
+    int maxTurns;  // Track initial duration for animation
     Team team;
     
     ShootEffect(Position f, Position t, bool grenade, Team tm) 
-        : from(f), to(t), isGrenade(grenade), turnsRemaining(2), team(tm) {}
+        : from(f), to(t), isGrenade(grenade), 
+          turnsRemaining(grenade ? 8 : 4),  // Grenades last 8 turns, bullets last 4 turns
+          maxTurns(grenade ? 8 : 4),
+          team(tm) {}
 };
 
 /**
@@ -45,12 +49,28 @@ private:
     int currentTurn;
     bool gameOver;
     Team winner;
+    bool isDraw;  // Track if game ended in a draw/stalemate
     bool paused;
     float turnDelay;
     float timeSinceLastTurn;
+    float gameOverTimer;  // Time since game ended (for auto-exit)
     bool showFogOfWar;  // Toggle for visibility visualization
     bool showVisionCones;  // Toggle for vision cone visualization
     bool showWeaponRanges;  // Toggle for weapon range circles
+    
+    // Stalemate stats for display
+    std::string stalemateType;  // Type of stalemate that occurred
+    int finalBlueWarriors, finalOrangeWarriors;
+    int finalBlueHP, finalOrangeHP;
+    int finalBlueScore, finalOrangeScore;
+    
+    // Stalemate detection
+    int turnsAtWarehouse;  // Count turns both warriors are at their warehouses
+    bool blueWarriorAtWarehouse;
+    bool orangeWarriorAtWarehouse;
+    Position lastBlueWarriorPos;  // NEW: Track warrior positions for general stalemate
+    Position lastOrangeWarriorPos;  // NEW: Track warrior positions for general stalemate
+    int turnsWithoutMovement;  // NEW: Count turns where both warriors don't move
     
     // Visual effects
     std::deque<ShootEffect> shootEffects;
@@ -77,6 +97,8 @@ private:
     void initializeTeams();
     void updateAllCharacters();
     void checkVictoryConditions();
+    void checkStalemateConditions();  // NEW: Check for warehouse stalemate
+    Team determineWinnerByScore();    // NEW: Determine winner by scoring warriors and HP
     Team getAliveTeam();
     int countAliveCharacters(Team team);
     bool isPositionOccupied(const Position& pos, const Character* excludeChar = nullptr) const;

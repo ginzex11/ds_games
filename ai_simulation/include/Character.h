@@ -41,7 +41,8 @@ public:
     void updateVisibility(const Map& map);
     void scanForEnemies(const std::vector<Character*>& allCharacters, int currentTurn);
     void moveAlongPath(const std::vector<Character*>& allCharacters);
-    void takeDamage(int damage);
+    virtual void takeDamage(int damage);  // Virtual to allow warrior to track damage timing
+    void heal(int amount);
     
     // Getters
     Position getPosition() const { return position; }

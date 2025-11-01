@@ -6,8 +6,9 @@
  */
 Supplier::Supplier(Position pos, Team t)
     : Character(pos, t, CharacterType::SUPPLIER),
-      ammoSupplies(0), currentRecipient(nullptr), returningFromWarehouse(false) {
-    // Suppliers must visit warehouse FIRST to get supplies before resupplying
+      ammoSupplies(0), currentRecipient(nullptr), returningFromWarehouse(false),
+      recipientPathFailures(0), lastRecipientPathAttempt(0), currentTurnTracker(0) {
+    // Suppliers start with 0 ammo - must receive order from commander to get supplies
 }
 
 /**
@@ -15,6 +16,9 @@ Supplier::Supplier(Position pos, Team t)
  */
 void Supplier::update(const Map& map, const std::vector<Character*>& allCharacters, int currentTurn) {
     if (!alive) return;
+    
+    // Track current turn for timeout logic
+    currentTurnTracker = currentTurn;
     
     // YIELD LOGIC: If standing still and blocking friendly warriors, move aside
     if (currentPath.empty() || pathIndex >= static_cast<int>(currentPath.size())) {
@@ -73,6 +77,24 @@ void Supplier::update(const Map& map, const std::vector<Character*>& allCharacte
     }
     auto safetyMap = AI::generateSafetyMap(enemyPositions, map);
     
+    // AUTONOMOUS RESUPPLY: If idle and low on ammo, go to warehouse
+    if (currentOrder.type != OrderType::RESUPPLY && ammoSupplies <= 1 && !returningFromWarehouse) {
+        LOG_CHARACTER("[SUPPLIER " << teamToString(team) << "] AUTONOMOUS: Low on supplies (" 
+                 << ammoSupplies << " packs), going to warehouse\n");
+        travelToWarehouse(map, safetyMap);
+        moveAlongPath(allCharacters);
+        
+        // Check if reached warehouse
+        if (map.isWarehouse(position) && map.getWarehouseType(position) == WarehouseType::AMMO) {
+            LOG_CHARACTER("[SUPPLIER " << teamToString(team) << "] Reached warehouse during autonomous resupply\n");
+            Map& mutableMap = const_cast<Map&>(map);
+            collectAmmo(mutableMap);
+            currentPath.clear();
+            pathIndex = 0;
+        }
+        return;  // Skip normal order processing this turn
+    }
+    
     // If carrying out resupply order
     if (currentOrder.type == OrderType::RESUPPLY && currentRecipient) {
         LOG_CHARACTER("[SUPPLIER " << teamToString(team) << "] Executing RESUPPLY order for " 
@@ -126,15 +148,28 @@ void Supplier::update(const Map& map, const std::vector<Character*>& allCharacte
                 // Have ammo or returning, move towards recipient
                 Position recipientPos = currentRecipient->getPosition();
                 
+                // OPTION C: Emergency sprint if warrior has 0 ammo (critical situation)
+                bool emergencyMode = false;
+                if (Warrior* w = dynamic_cast<Warrior*>(currentRecipient)) {
+                    if (w->getAmmo() == 0) {
+                        emergencyMode = true;
+                        LOG_CHARACTER("[SUPPLIER " << teamToString(team) 
+                                 << "] EMERGENCY MODE: Warrior has 0 ammo! Double speed to recipient\n");
+                    }
+                }
+                
                 // Update path if recipient has moved significantly
                 // or if we have no path or path is nearly complete
                 bool needsNewPath = currentPath.empty() || 
                                    pathIndex >= static_cast<int>(currentPath.size()) - 2;
                 
                 // Check if recipient moved from our target
+                // FIX: Allow target to be adjacent to recipient (for blocked paths)
                 if (!needsNewPath && !currentPath.empty()) {
                     Position currentTarget = currentPath[currentPath.size() - 1];
-                    if (currentTarget != recipientPos) {
+                    float distToTarget = currentTarget.euclideanDistance(recipientPos);
+                    // Recipient moved if target is more than 1.5 tiles away (allows adjacent/diagonal)
+                    if (distToTarget > 1.5f) {
                         needsNewPath = true;
                         LOG_CHARACTER("[SUPPLIER " << teamToString(team) << "] Recipient moved! Recalculating path\n");
                     }
@@ -149,11 +184,17 @@ void Supplier::update(const Map& map, const std::vector<Character*>& allCharacte
                     LOG_CHARACTER("[SUPPLIER " << teamToString(team) << "] Following existing path to recipient"
                              << " | Path size: " << currentPath.size() << " | PathIndex: " << pathIndex << "\n");
                 }
+                
+                // OPTION C: Double speed movement in emergency mode
+                if (emergencyMode) {
+                    moveAlongPath(allCharacters);  // Move twice per turn
+                    LOG_CHARACTER("[SUPPLIER " << teamToString(team) << "] Emergency sprint: moved 2 steps\n");
+                }
             }
         }
     }
     
-    // Move along path
+    // Move along path (normal speed)
     moveAlongPath(allCharacters);
     
     // Check if reached warehouse (only trigger ONCE when first arriving)
@@ -221,14 +262,71 @@ void Supplier::travelToWarehouse(const Map& map, const std::vector<std::vector<f
         LOG_CHARACTER("[SUPPLIER " << teamToString(team) << "] Calculating DIRECT path to warehouse at (" 
                  << warehouse.x << "," << warehouse.y << ") - ignoring safety\n");
         
+        // Track consecutive pathfinding failures for last-resort teleport
+        static int warehousePathFailures = 0;
+        
         // CRITICAL: Support units MUST reach warehouses - use direct path with NO safety weight
         currentPath = AI::findPath(position, warehouse, map);
         
         pathIndex = 0;
         
         if (currentPath.empty()) {
-            LOG_CHARACTER("[SUPPLIER " << teamToString(team) << "] ERROR: No path to warehouse found!\n");
+            warehousePathFailures++;
+            LOG_CHARACTER("[SUPPLIER " << teamToString(team) << "] ERROR: No path to warehouse found! (Failure #" 
+                     << warehousePathFailures << ") Current pos: (" << position.x << "," << position.y << ")\n");
+            
+            // Try nearby positions if exact warehouse position is blocked
+            std::vector<Position> nearbyPositions = {
+                Position(warehouse.x + 1, warehouse.y),
+                Position(warehouse.x - 1, warehouse.y),
+                Position(warehouse.x, warehouse.y + 1),
+                Position(warehouse.x, warehouse.y - 1),
+                Position(warehouse.x + 1, warehouse.y + 1),
+                Position(warehouse.x - 1, warehouse.y - 1),
+                Position(warehouse.x + 1, warehouse.y - 1),
+                Position(warehouse.x - 1, warehouse.y + 1)
+            };
+            
+            for (const Position& nearbyPos : nearbyPositions) {
+                if (nearbyPos.x >= 0 && nearbyPos.x < GRID_WIDTH && 
+                    nearbyPos.y >= 0 && nearbyPos.y < GRID_HEIGHT &&
+                    map.isPassable(nearbyPos)) {
+                    currentPath = AI::findPath(position, nearbyPos, map);
+                    if (!currentPath.empty()) {
+                        LOG_CHARACTER("[SUPPLIER " << teamToString(team) << "] Found alternate path to nearby position (" 
+                                 << nearbyPos.x << "," << nearbyPos.y << ")\n");
+                        warehousePathFailures = 0; // Reset on success
+                        break;
+                    }
+                }
+            }
+            
+            // LAST RESORT: If supplier is completely trapped for 5+ turns, teleport near warehouse
+            if (currentPath.empty() && warehousePathFailures >= 5) {
+                LOG_CHARACTER("[SUPPLIER " << teamToString(team) 
+                         << "] CRITICAL: Completely trapped after " << warehousePathFailures 
+                         << " failures! EMERGENCY TELEPORT to warehouse area\n");
+                
+                // Find nearest passable position to warehouse
+                bool teleported = false;
+                for (int radius = 1; radius <= 5 && !teleported; ++radius) {
+                    for (int dy = -radius; dy <= radius && !teleported; ++dy) {
+                        for (int dx = -radius; dx <= radius && !teleported; ++dx) {
+                            Position teleportPos(warehouse.x + dx, warehouse.y + dy);
+                            if (isValidPosition(teleportPos) && map.isPassable(teleportPos)) {
+                                position = teleportPos;
+                                warehousePathFailures = 0;
+                                teleported = true;
+                                LOG_CHARACTER("[SUPPLIER " << teamToString(team) 
+                                         << "] Emergency teleported to (" << position.x << "," << position.y 
+                                         << ") - " << radius << " tiles from warehouse\n");
+                            }
+                        }
+                    }
+                }
+            }
         } else {
+            warehousePathFailures = 0; // Reset on successful path
             LOG_CHARACTER("[SUPPLIER " << teamToString(team) << "] Warehouse path: " << currentPath.size() << " cells\n");
         }
     }
@@ -250,8 +348,25 @@ void Supplier::travelToRecipient(const Map& map, const std::vector<std::vector<f
     pathIndex = 0;
     
     if (currentPath.empty()) {
-        LOG_CHARACTER("[SUPPLIER " << teamToString(team) << "] ERROR: No path to recipient found!\n");
+        // Track pathfinding failures
+        recipientPathFailures++;
+        
+        // TIMEOUT LOGIC: After 10 consecutive failures, give up on this recipient
+        if (recipientPathFailures >= 10) {
+            LOG_CHARACTER("[SUPPLIER " << teamToString(team) << "] ERROR: Failed to path to recipient " 
+                     << recipientPathFailures << " times. Clearing order - recipient unreachable!\n");
+            currentRecipient = nullptr;
+            currentOrder = Order();
+            recipientPathFailures = 0;
+            lastRecipientPathAttempt = currentTurnTracker;
+            return;
+        }
+        
+        LOG_CHARACTER("[SUPPLIER " << teamToString(team) << "] ERROR: No path to recipient found (failure " 
+                 << recipientPathFailures << "/10)! Will retry next turn.\n");
     } else {
+        // Success! Reset failure counter
+        recipientPathFailures = 0;
         LOG_CHARACTER("[SUPPLIER " << teamToString(team) << "] Recipient path: " << currentPath.size() << " cells\n");
     }
 }

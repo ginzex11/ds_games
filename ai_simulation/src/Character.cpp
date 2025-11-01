@@ -160,6 +160,16 @@ void Character::takeDamage(int damage) {
 }
 
 /**
+ * @brief Heal character
+ */
+void Character::heal(int amount) {
+    health += amount;
+    if (health > INITIAL_HEALTH) {
+        health = INITIAL_HEALTH; // Cap at max health
+    }
+}
+
+/**
  * @brief Find nearest visible enemy
  */
 Character* Character::findNearestEnemy(const std::vector<Character*>& allCharacters) const {

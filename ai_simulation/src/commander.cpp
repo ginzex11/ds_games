@@ -2,6 +2,7 @@
 #include "warrior.h"
 #include "medic.h"
 #include "supplier.h"
+#include <algorithm>  // For std::sort
 
 /**
  * @brief Construct a new Commander
@@ -42,7 +43,7 @@ void Commander::update(const Map& map, const std::vector<Character*>& allCharact
     teamSafetyMap = AI::generateSafetyMap(enemyPositions, map);
     
     // Issue orders to team
-    issueOrders(teamMembers, map);
+    issueOrders(teamMembers, map, currentTurn);
     
     // Relocate if in danger
     relocateIfNeeded(map);
@@ -122,7 +123,7 @@ void Commander::aggregateTeamVisibility(const std::vector<Character*>& teamMembe
 /**
  * @brief Issue orders to team members
  */
-void Commander::issueOrders(const std::vector<Character*>& teamMembers, const Map& map) {
+void Commander::issueOrders(const std::vector<Character*>& teamMembers, const Map& map, int currentTurn) {
     LOG_CHARACTER("[COMMANDER " << teamToString(team) << "] Issuing orders to team...\n");
     
     // FIRST PASS: Check for critical situations that need immediate response
@@ -187,7 +188,7 @@ void Commander::issueOrders(const std::vector<Character*>& teamMembers, const Ma
         
         switch (member->getType()) {
             case CharacterType::WARRIOR:
-                order = determineWarriorOrder(member, map);
+                order = determineWarriorOrder(member, map, currentTurn);
                 break;
             case CharacterType::MEDIC:
                 order = determineMedicOrder(member, teamMembers, map);
@@ -214,30 +215,84 @@ void Commander::issueOrders(const std::vector<Character*>& teamMembers, const Ma
 /**
  * @brief Determine order for warrior
  */
-Order Commander::determineWarriorOrder(Character* warrior, const Map& map) {
+Order Commander::determineWarriorOrder(Character* warrior, const Map& map, int currentTurn) {
     Warrior* w = dynamic_cast<Warrior*>(warrior);
     if (!w) return Order();
     
-    // If warrior needs resources, let medic/supplier handle it
-    if (w->getNeedsHealing() || w->getNeedsAmmo()) {
+    // FIX 3: Even if warrior needs resources, still attack if enemies visible and has ammo!
+    // Don't let warriors sit idle with ammo while enemies nearby
+    bool hasAmmo = w->getAmmo() > 0;
+    bool hasGrenades = w->getGrenades() > 0;
+    bool canFight = hasAmmo || hasGrenades;
+    
+    // If warrior needs resources BUT can fight, check for enemies first
+    if ((w->getNeedsHealing() || w->getNeedsAmmo()) && !canFight) {
+        // Only defend if truly unable to fight
         return Order(OrderType::DEFEND);
     }
     
     // If enemies known, attack nearest
     if (!combinedEnemyMap.empty()) {
-        // Find nearest enemy
-        Position nearestEnemy = combinedEnemyMap.begin()->first;
-        float minDist = warrior->getPosition().euclideanDistance(nearestEnemy);
-        
+        // Build sorted list of enemies by distance
+        std::vector<std::pair<Position, float>> enemiesByDistance;
         for (const auto& pair : combinedEnemyMap) {
             float dist = warrior->getPosition().euclideanDistance(pair.first);
-            if (dist < minDist) {
-                minDist = dist;
-                nearestEnemy = pair.first;
-            }
+            enemiesByDistance.push_back({pair.first, dist});
         }
         
-        return Order(OrderType::ATTACK, nearestEnemy);
+        // Sort by distance
+        std::sort(enemiesByDistance.begin(), enemiesByDistance.end(),
+                 [](const auto& a, const auto& b) { return a.second < b.second; });
+        
+        // IMPROVED: Try nearest enemy first, but if failed, try next nearest
+        // This provides fallback targets instead of giving up completely
+        int attemptedTargets = 0;
+        int skippedTargets = 0;
+        
+        for (const auto& enemyPair : enemiesByDistance) {
+            Position enemyPos = enemyPair.first;
+            attemptedTargets++;
+            
+            // Skip if warrior has recently failed to reach this target
+            if (w->hasFailedDestination(enemyPos)) {
+                skippedTargets++;
+                LOG_CHARACTER("  - W has previously failed to reach target at (" 
+                         << enemyPos.x << "," << enemyPos.y << "), trying next target (" 
+                         << skippedTargets << "/" << enemiesByDistance.size() << " skipped)\n");
+                continue;  // Try next enemy instead of giving up
+            }
+            
+            // FIX C: Validate target position still has recent enemy sighting (<3 turns)
+            // This prevents issuing ATTACK orders to stale positions where enemy has moved/died
+            bool targetHasRecentEnemy = false;
+            if (combinedEnemyMap.find(enemyPos) != combinedEnemyMap.end()) {
+                const EnemySighting& sighting = combinedEnemyMap[enemyPos];
+                int turnsSinceSeen = currentTurn - sighting.turnSeen;
+                if (turnsSinceSeen < 3) {
+                    targetHasRecentEnemy = true;
+                } else {
+                    LOG_CHARACTER("  - FIX C: Skipping stale target at (" << enemyPos.x << "," << enemyPos.y 
+                             << ") - seen " << turnsSinceSeen << " turns ago\n");
+                }
+            }
+            
+            if (!targetHasRecentEnemy) {
+                skippedTargets++;
+                continue;  // Skip stale target
+            }
+            
+            // Found valid target
+            if (skippedTargets > 0) {
+                LOG_CHARACTER("  - FIX 4: Issuing ATTACK to fallback target #" << attemptedTargets 
+                         << " after skipping " << skippedTargets << " failed targets\n");
+            }
+            return Order(OrderType::ATTACK, enemyPos);
+        }
+        
+        // All known enemies have failed paths - let warrior handle autonomously
+        LOG_CHARACTER("  - FIX 4: All " << enemiesByDistance.size() 
+                 << " known enemy positions failed previously, warrior will handle autonomously\n");
+        return Order();  // Let warrior make independent tactical decision
     }
     
     // No enemies known - patrol aggressively towards enemy territory
@@ -269,33 +324,31 @@ Order Commander::determineWarriorOrder(Character* warrior, const Map& map) {
         }
     }
     
-    // Only give patrol order if warrior is not already near the patrol point
-    if (warrior->getPosition().euclideanDistance(patrolTarget) > 5) {
-        return Order(OrderType::MOVE, patrolTarget);
-    }
-    
-    // Already at patrol position, no order (will engage if enemies appear)
-    return Order();
+    // FIX 3: Always give patrol order to keep warriors moving and scanning
+    // Even if near patrol point, rotate to different patrol positions
+    return Order(OrderType::MOVE, patrolTarget);
 }
 
 /**
  * @brief Determine order for medic
  * PRIORITY SYSTEM:
  * 1. Warriors in retreat mode (HP <= 40%) - CRITICAL
- * 2. Warriors needing healing (HP <= 50%) - HIGH
+ * 2. Commander if injured (HP <= 50%) - HIGH
+ * 3. Warriors needing healing (HP <= 50%) - HIGH
  */
 Order Commander::determineMedicOrder(Character* medic, const std::vector<Character*>& teamMembers, const Map& map) {
     // PRIORITY 1: Find retreating warriors (HP <= 40%) - CRITICAL
+    // FIX: Prioritize LOWEST HP warrior, not closest distance!
     Warrior* criticalWarrior = nullptr;
-    float closestCriticalDist = 999999.0f;
+    int lowestHP = 999999;
     
     for (Character* member : teamMembers) {
         if (member->getType() == CharacterType::WARRIOR && member->isAlive()) {
             Warrior* w = dynamic_cast<Warrior*>(member);
             if (w && w->getIsRetreating()) {
-                float dist = medic->getPosition().euclideanDistance(member->getPosition());
-                if (dist < closestCriticalDist) {
-                    closestCriticalDist = dist;
+                int hp = w->getHealth();
+                if (hp < lowestHP) {
+                    lowestHP = hp;
                     criticalWarrior = w;
                 }
             }
@@ -305,11 +358,43 @@ Order Commander::determineMedicOrder(Character* medic, const std::vector<Charact
     if (criticalWarrior) {
         LOG_CHARACTER("  [Commander] PRIORITY HEAL: Medic assigned to RETREATING " << teamToString(criticalWarrior->getTeam()) 
                  << " warrior at (" << criticalWarrior->getPosition().x << "," << criticalWarrior->getPosition().y 
-                 << ") with HP:" << criticalWarrior->getHealth() << " - CRITICAL!\n");
+                 << ") with HP:" << criticalWarrior->getHealth() << " (LOWEST HP) - CRITICAL!\n");
         return Order(OrderType::HEAL, criticalWarrior->getPosition(), criticalWarrior);
     }
     
-    // PRIORITY 2: Find warriors needing healing (HP <= 50%) - HIGH
+    // OPTION C PRIORITY 1.5: Find warriors with HP < 40 even if not retreating - URGENT
+    // FIX: Prioritize LOWEST HP warrior, not closest distance!
+    Warrior* urgentWarrior = nullptr;
+    int lowestUrgentHP = 999999;
+    
+    for (Character* member : teamMembers) {
+        if (member->getType() == CharacterType::WARRIOR && member->isAlive()) {
+            Warrior* w = dynamic_cast<Warrior*>(member);
+            if (w && w->getHealth() < 40) {
+                int hp = w->getHealth();
+                if (hp < lowestUrgentHP) {
+                    lowestUrgentHP = hp;
+                    urgentWarrior = w;
+                }
+            }
+        }
+    }
+    
+    if (urgentWarrior) {
+        LOG_CHARACTER("  [Commander] OPTION C: Medic assigned to LOW HP warrior (HP < 40) at (" 
+                 << urgentWarrior->getPosition().x << "," << urgentWarrior->getPosition().y 
+                 << ") with HP:" << urgentWarrior->getHealth() << " (LOWEST HP) - URGENT!\n");
+        return Order(OrderType::HEAL, urgentWarrior->getPosition(), urgentWarrior);
+    }
+    
+    // PRIORITY 2: Check if COMMANDER needs healing (HP <= 50%) - HIGH
+    if (health <= 50) {
+        LOG_CHARACTER("  [Commander] SELF-HEAL: Assigning medic to heal COMMANDER at (" 
+                 << position.x << "," << position.y << ") with HP:" << health << "\n");
+        return Order(OrderType::HEAL, position, this);
+    }
+    
+    // PRIORITY 3: Find warriors needing healing (HP <= 50%) - HIGH
     for (Character* member : teamMembers) {
         if (member->getType() == CharacterType::WARRIOR && member->isAlive()) {
             Warrior* w = dynamic_cast<Warrior*>(member);
@@ -346,13 +431,14 @@ Order Commander::determineSupplierOrder(Character* supplier, const std::vector<C
 
 /**
  * @brief Relocate commander to safer position if threatened
+ * Uses depth-limited BFS with defined search range
  */
 void Commander::relocateIfNeeded(const Map& map) {
     float currentSafety = teamSafetyMap[position.y][position.x];
     
-    // If in danger (safety > 5), find safer position
+    // If in danger (safety > 5), find safer position within 20 tiles
     if (currentSafety > 5.0f) {
-        Position safePos = AI::findNearestSafePosition(position, map, teamSafetyMap, 2.0f);
+        Position safePos = AI::findNearestSafePosition(position, map, teamSafetyMap, 2.0f, 20);
         
         if (safePos != position) {
             currentPath = AI::findPath(position, safePos, map, &teamSafetyMap, 1.0f);
